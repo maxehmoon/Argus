@@ -28,7 +28,7 @@ quiet, observant, and always close at hand.
   disk activity, or energy.
 - **Useful detail:** CPU temperature and speed, memory composition, network
   identity, disk capacity, battery health, power state, and more.
-- **Native throughout:** Built with AppKit and focused SwiftUI views—no Electron,
+- **Native throughout:** Built with AppKit and focused SwiftUI views, with no Electron,
   browser engine, Node.js runtime, or third-party packages.
 - **Made for macOS:** SF Symbols, native menus, system materials, keyboard
   shortcuts, persistent settings, and full Reduce Motion support.

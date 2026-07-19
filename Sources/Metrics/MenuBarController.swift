@@ -288,8 +288,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let summary = ResourceSummaryView(
       symbolName: kind.symbolName,
       title: kind.summaryTitle,
-      primary: "—",
-      secondary: valueLabels == nil ? "" : "—",
+      primary: "–",
+      secondary: valueLabels == nil ? "" : "–",
       valueLabels: valueLabels
     )
     menu.addItem(viewItem(summary))
@@ -446,8 +446,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     guard let presentation = presentations[kind] else { return }
     guard let snapshot = latestSnapshot else {
       presentation.summary.update(
-        primary: "—",
-        secondary: kind == .network || kind == .storage ? "—" : ""
+        primary: "–",
+        secondary: kind == .network || kind == .storage ? "–" : ""
       )
       return
     }
@@ -476,10 +476,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       presentation.summary.update(
         primary: snapshot.storageActivity.map {
           StatsFormatter.rate($0.readBytesPerSecond)
-        } ?? "—",
+        } ?? "–",
         secondary: snapshot.storageActivity.map {
           StatsFormatter.rate($0.writeBytesPerSecond)
-        } ?? "—",
+        } ?? "–",
         primaryMetric: snapshot.storageActivity?.readBytesPerSecond,
         secondaryMetric: snapshot.storageActivity?.writeBytesPerSecond
       )
@@ -487,7 +487,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       presentation.summary.update(
         primary: snapshot.battery.map {
           StatsFormatter.percentage($0.chargePercent)
-        } ?? "—",
+        } ?? "–",
         secondary: "",
         primaryMetric: snapshot.battery.map(\.chargePercent)
       )
@@ -816,7 +816,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           name: "Temperature",
           value: cpuHardwareStats?.temperatureCelsius.map(
             StatsFormatter.temperature
-          ) ?? "—",
+          ) ?? "–",
           symbol: "thermometer.medium"
         ),
         detailItem(
@@ -824,7 +824,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           name: "Processor Speed",
           value: cpuHardwareStats?.frequencyMHz.map(
             StatsFormatter.frequency
-          ) ?? "—",
+          ) ?? "–",
           symbol: "speedometer"
         ),
       ]
@@ -1035,7 +1035,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         detailItem(
           id: "battery:power",
           name: batteryPowerTitle(battery.state),
-          value: battery.powerWatts.map(formattedPower) ?? "—",
+          value: battery.powerWatts.map(formattedPower) ?? "–",
           symbol: "bolt.circle"
         ),
         detailItem(
@@ -1404,7 +1404,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
     if preferences.isEnabled(.storage) {
       setTitle(
-        snapshot.storage.map { StatsFormatter.percentage($0.usedPercent) } ?? "—",
+        snapshot.storage.map { StatsFormatter.percentage($0.usedPercent) } ?? "–",
         for: .storage
       )
     }
@@ -1413,7 +1413,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         updateBatteryStatusIcon(for: battery)
       }
       setTitle(
-        snapshot.battery.map { StatsFormatter.percentage($0.chargePercent) } ?? "—",
+        snapshot.battery.map { StatsFormatter.percentage($0.chargePercent) } ?? "–",
         for: .battery
       )
     }

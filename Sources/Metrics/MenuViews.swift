@@ -410,8 +410,8 @@ final class ResourceHistoryView: NSView {
 @MainActor
 private final class StorageCapacityModel: ObservableObject {
   @Published var volumeName = "Storage"
-  @Published var usedText = "—"
-  @Published var freeText = "—"
+  @Published var usedText = "–"
+  @Published var freeText = "–"
   @Published var usedFraction = 0.0
   @Published var isAvailable = false
 }
@@ -550,8 +550,8 @@ final class StorageCapacityView: NSView {
 
   func showUnavailable() {
     model.volumeName = "Storage"
-    model.usedText = "—"
-    model.freeText = "—"
+    model.usedText = "–"
+    model.freeText = "–"
     model.usedFraction = 0
     model.isAvailable = false
     setAccessibilityValue("Unavailable")
@@ -572,8 +572,8 @@ final class NetworkStatusView: NSView {
   )
   private static let lineHeight: CGFloat = 10.5
 
-  private var received = "—"
-  private var sent = "—"
+  private var received = "–"
+  private var sent = "–"
 
   override var isFlipped: Bool { true }
 
