@@ -1,0 +1,68 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing version tag to release, for example v1.0.0
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: macos-15
+    env:
+      RELEASE_TAG: ${{ github.event_name == 'workflow_dispatch' && inputs.tag || github.ref_name }}
+
+    steps:
+      - name: Check out release tag
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ env.RELEASE_TAG }}
+
+      - name: Validate release version
+        shell: zsh
+        run: |
+          app_version=$(/usr/libexec/PlistBuddy \
+            -c 'Print :CFBundleShortVersionString' \
+            Resources/Info.plist)
+          if [[ "${RELEASE_TAG}" != "v${app_version}" ]]; then
+            echo "Tag ${RELEASE_TAG} does not match app version ${app_version}." >&2
+            exit 1
+          fi
+
+      - name: Run tests
+        run: >-
+          xcodebuild
+          -project Metrics.xcodeproj
+          -scheme Metrics
+          -destination 'platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/ArgusTests"
+          CODE_SIGNING_ALLOWED=NO
+          test
+
+      - name: Build release app
+        run: ./Scripts/build-app.sh
+
+      - name: Create DMG
+        run: ./Scripts/create-dmg.sh
+
+      - name: Create checksum
+        run: shasum -a 256 dist/Argus.dmg > dist/Argus.dmg.sha256
+
+      - name: Publish GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${RELEASE_TAG}"
+          dist/Argus.dmg
+          dist/Argus.dmg.sha256
+          --verify-tag
+          --title "Argus ${RELEASE_TAG#v}"
+          --generate-notes
