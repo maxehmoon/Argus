@@ -620,7 +620,7 @@ final class NetworkStatusView: NSView {
     width: CGFloat
   ) {
     let arrowWidth: CGFloat = 8
-    let gap: CGFloat = 0
+    let gap: CGFloat = -1
     draw(
       arrow,
       in: NSRect(
@@ -641,7 +641,7 @@ final class NetworkStatusView: NSView {
         width: width - arrowWidth - gap,
         height: Self.lineHeight
       ),
-      alignment: .right,
+      alignment: .left,
       color: .controlTextColor,
       font: Self.font
     )

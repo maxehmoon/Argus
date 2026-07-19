@@ -205,7 +205,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     if kind == .cpu {
       cpuHardwareStats = nil
     }
-    sampleSystemStats(forOpenMenu: kind)
+    sampleSystemStats(
+      forOpenMenu: kind,
+      preserveLatestNetworkRates: true
+    )
     showLoading(for: kind)
     if kind == .network, preferences.showPublicIP {
       refreshPublicIP()
@@ -925,7 +928,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             id: "network:name",
             name: "Network",
             value: details.networkName
-              ?? (isConnected ? "Hidden by macOS" : "Not connected"),
+              ?? (isConnected ? "Unavailable" : "Not connected"),
             symbol: "wifi.router"
           )
         )
@@ -1215,8 +1218,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     return image
   }
 
-  private func sampleSystemStats(forOpenMenu kind: WidgetKind) {
+  private func sampleSystemStats(
+    forOpenMenu kind: WidgetKind,
+    preserveLatestNetworkRates: Bool = false
+  ) {
     autoreleasepool {
+      if preserveLatestNetworkRates,
+        kind == .network,
+        let snapshot = latestSnapshot
+      {
+        updateSummary(for: kind)
+        showWidgetDetails(for: kind, snapshot: snapshot)
+        return
+      }
+
       if kind == .battery {
         sampler.invalidateBatteryCache()
       }
