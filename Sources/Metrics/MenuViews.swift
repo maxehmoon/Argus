@@ -560,7 +560,7 @@ final class StorageCapacityView: NSView {
 
 @MainActor
 final class NetworkStatusView: NSView {
-  static let preferredWidth: CGFloat = 72
+  static let preferredWidth: CGFloat = 77
 
   private static let font = NSFont.monospacedDigitSystemFont(
     ofSize: 10,
@@ -586,7 +586,7 @@ final class NetworkStatusView: NSView {
 
     let contentHeight = Self.lineHeight * 2
     let originY = floor((bounds.height - contentHeight) / 2)
-    let contentWidth: CGFloat = 64
+    let contentWidth: CGFloat = 69
     let originX = floor((bounds.width - contentWidth) / 2)
 
     drawLine(
