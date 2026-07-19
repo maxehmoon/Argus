@@ -641,7 +641,7 @@ final class NetworkStatusView: NSView {
         width: width - arrowWidth - gap,
         height: Self.lineHeight
       ),
-      alignment: .left,
+      alignment: .right,
       color: .controlTextColor,
       font: Self.font
     )
