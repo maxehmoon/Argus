@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS 13 deployment target
+        run: >-
+          xcodebuild
+          -project Metrics.xcodeproj
+          -scheme Metrics
+          -configuration Debug
+          -destination 'generic/platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/ArgusMinimumOS"
+          MACOSX_DEPLOYMENT_TARGET=13.0
+          CODE_SIGNING_ALLOWED=NO
+          build
+      - name: Run tests
+        run: >-
+          xcodebuild
+          -project Metrics.xcodeproj
+          -scheme Metrics
+          -destination 'platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/ArgusTests"
+          CODE_SIGNING_ALLOWED=NO
+          test
+      - name: Build optimized release
+        run: >-
+          xcodebuild
+          -project Metrics.xcodeproj
+          -scheme Metrics
+          -configuration Release
+          -destination 'generic/platform=macOS'
+          -derivedDataPath "$RUNNER_TEMP/ArgusRelease"
+          CODE_SIGNING_ALLOWED=NO
+          build

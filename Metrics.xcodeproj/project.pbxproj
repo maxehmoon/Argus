@@ -1,0 +1,240 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 60;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		A00000000000000000000001 /* StatsSnapshot.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000001 /* StatsSnapshot.swift */; };
+		A00000000000000000000002 /* StatsFormatter.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000002 /* StatsFormatter.swift */; };
+		A00000000000000000000003 /* SystemStatsSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000003 /* SystemStatsSampler.swift */; };
+		A00000000000000000000004 /* MetricsApplication.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000004 /* MetricsApplication.swift */; };
+		A00000000000000000000005 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000005 /* AppDelegate.swift */; };
+		A00000000000000000000006 /* MenuBarController.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000006 /* MenuBarController.swift */; };
+		A00000000000000000000007 /* AppIcon.icns in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000007 /* AppIcon.icns */; };
+		A00000000000000000000008 /* StatsFormatterTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000008 /* StatsFormatterTests.swift */; };
+		A00000000000000000000009 /* SystemStatsSamplerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000009 /* SystemStatsSamplerTests.swift */; };
+		A0000000000000000000000A /* libMetricsCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* libMetricsCore.a */; };
+		A0000000000000000000000B /* libMetricsCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* libMetricsCore.a */; };
+		A0000000000000000000000C /* ProcessStatsSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000E /* ProcessStatsSampler.swift */; };
+		A0000000000000000000000D /* NetworkProcessSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000F /* NetworkProcessSampler.swift */; };
+		A0000000000000000000000E /* MenuViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000010 /* MenuViews.swift */; };
+		A0000000000000000000000F /* AdditionalStatsSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000011 /* AdditionalStatsSampler.swift */; };
+		A00000000000000000000010 /* WidgetPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* WidgetPreferences.swift */; };
+		A00000000000000000000011 /* Settings.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000013 /* Settings.swift */; };
+		A00000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000014 /* PrivacyInfo.xcprivacy */; };
+		A00000000000000000000013 /* CPUHardwareSampler.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000015 /* CPUHardwareSampler.swift */; };
+		A00000000000000000000014 /* WidgetPreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000012 /* WidgetPreferences.swift */; };
+		A00000000000000000000015 /* WidgetPreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B00000000000000000000016 /* WidgetPreferencesTests.swift */; };
+		A00000000000000000000016 /* libMetricsCore.a in Frameworks */ = {isa = PBXBuildFile; fileRef = B0000000000000000000000A /* libMetricsCore.a */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		C00000000000000000000001 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E00000000000000000000001;
+			remoteInfo = MetricsCore;
+		};
+		C00000000000000000000002 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E00000000000000000000001;
+			remoteInfo = MetricsCore;
+		};
+		C00000000000000000000003 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = D00000000000000000000001 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = E00000000000000000000001;
+			remoteInfo = MetricsCore;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		B00000000000000000000001 /* StatsSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsSnapshot.swift; sourceTree = "<group>"; };
+		B00000000000000000000002 /* StatsFormatter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsFormatter.swift; sourceTree = "<group>"; };
+		B00000000000000000000003 /* SystemStatsSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemStatsSampler.swift; sourceTree = "<group>"; };
+		B00000000000000000000004 /* MetricsApplication.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MetricsApplication.swift; sourceTree = "<group>"; };
+		B00000000000000000000005 /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		B00000000000000000000006 /* MenuBarController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarController.swift; sourceTree = "<group>"; };
+		B00000000000000000000007 /* AppIcon.icns */ = {isa = PBXFileReference; lastKnownFileType = image.icns; path = AppIcon.icns; sourceTree = "<group>"; };
+		B00000000000000000000008 /* StatsFormatterTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatsFormatterTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000009 /* SystemStatsSamplerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SystemStatsSamplerTests.swift; sourceTree = "<group>"; };
+		B0000000000000000000000A /* libMetricsCore.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = libMetricsCore.a; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000B /* Argus.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Argus.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000C /* MetricsCoreTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = MetricsCoreTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		B0000000000000000000000D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		B0000000000000000000000E /* ProcessStatsSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProcessStatsSampler.swift; sourceTree = "<group>"; };
+		B0000000000000000000000F /* NetworkProcessSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NetworkProcessSampler.swift; sourceTree = "<group>"; };
+		B00000000000000000000010 /* MenuViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuViews.swift; sourceTree = "<group>"; };
+		B00000000000000000000011 /* AdditionalStatsSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AdditionalStatsSampler.swift; sourceTree = "<group>"; };
+		B00000000000000000000012 /* WidgetPreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPreferences.swift; sourceTree = "<group>"; };
+		B00000000000000000000013 /* Settings.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Settings.swift; sourceTree = "<group>"; };
+		B00000000000000000000014 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; lastKnownFileType = text.xml; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		B00000000000000000000015 /* CPUHardwareSampler.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CPUHardwareSampler.swift; sourceTree = "<group>"; };
+		B00000000000000000000016 /* WidgetPreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetPreferencesTests.swift; sourceTree = "<group>"; };
+		B00000000000000000000017 /* ArgusTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ArgusTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		F00000000000000000000001 /* Frameworks */ = {isa = PBXFrameworksBuildPhase; buildActionMask = 2147483647; files = (); runOnlyForDeploymentPostprocessing = 0; };
+		F00000000000000000000002 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A0000000000000000000000A /* libMetricsCore.a in Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F00000000000000000000003 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A0000000000000000000000B /* libMetricsCore.a in Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		F00000000000000000000004 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (A00000000000000000000016 /* libMetricsCore.a in Frameworks */,);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		100000000000000000000001 = {
+			isa = PBXGroup;
+			children = (
+				100000000000000000000002 /* Sources */,
+				100000000000000000000005 /* Tests */,
+				100000000000000000000007 /* Resources */,
+				100000000000000000000008 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		100000000000000000000002 /* Sources */ = {isa = PBXGroup; children = (100000000000000000000003 /* Metrics */, 100000000000000000000004 /* MetricsCore */,); path = Sources; sourceTree = "<group>"; };
+		100000000000000000000003 /* Metrics */ = {isa = PBXGroup; children = (B00000000000000000000004, B00000000000000000000005, B00000000000000000000006, B00000000000000000000010, B00000000000000000000012, B00000000000000000000013,); path = Metrics; sourceTree = "<group>"; };
+		100000000000000000000004 /* MetricsCore */ = {isa = PBXGroup; children = (B00000000000000000000001, B00000000000000000000002, B00000000000000000000003, B0000000000000000000000E, B0000000000000000000000F, B00000000000000000000011, B00000000000000000000015,); path = MetricsCore; sourceTree = "<group>"; };
+		100000000000000000000005 /* Tests */ = {isa = PBXGroup; children = (100000000000000000000006 /* MetricsCoreTests */, 100000000000000000000009 /* ArgusTests */,); path = Tests; sourceTree = "<group>"; };
+		100000000000000000000006 /* MetricsCoreTests */ = {isa = PBXGroup; children = (B00000000000000000000008, B00000000000000000000009,); path = MetricsCoreTests; sourceTree = "<group>"; };
+		100000000000000000000009 /* ArgusTests */ = {isa = PBXGroup; children = (B00000000000000000000016,); path = ArgusTests; sourceTree = "<group>"; };
+		100000000000000000000007 /* Resources */ = {isa = PBXGroup; children = (B00000000000000000000007, B0000000000000000000000D, B00000000000000000000014,); path = Resources; sourceTree = "<group>"; };
+		100000000000000000000008 /* Products */ = {isa = PBXGroup; children = (B0000000000000000000000A, B0000000000000000000000B, B0000000000000000000000C, B00000000000000000000017,); name = Products; sourceTree = "<group>"; };
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		E00000000000000000000001 /* MetricsCore */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200000000000000000000001;
+			buildPhases = (300000000000000000000001 /* Sources */, F00000000000000000000001 /* Frameworks */,);
+			buildRules = ();
+			dependencies = ();
+			name = MetricsCore;
+			productName = MetricsCore;
+			productReference = B0000000000000000000000A /* libMetricsCore.a */;
+			productType = "com.apple.product-type.library.static";
+		};
+		E00000000000000000000002 /* Metrics */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200000000000000000000002;
+			buildPhases = (300000000000000000000002 /* Sources */, F00000000000000000000002 /* Frameworks */, 400000000000000000000001 /* Resources */,);
+			buildRules = ();
+			dependencies = (500000000000000000000001 /* PBXTargetDependency */,);
+			name = Metrics;
+			productName = Argus;
+			productReference = B0000000000000000000000B /* Argus.app */;
+			productType = "com.apple.product-type.application";
+		};
+		E00000000000000000000003 /* MetricsCoreTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200000000000000000000003;
+			buildPhases = (300000000000000000000003 /* Sources */, F00000000000000000000003 /* Frameworks */,);
+			buildRules = ();
+			dependencies = (500000000000000000000002 /* PBXTargetDependency */,);
+			name = MetricsCoreTests;
+			productName = MetricsCoreTests;
+			productReference = B0000000000000000000000C /* MetricsCoreTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		E00000000000000000000004 /* ArgusTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 200000000000000000000005;
+			buildPhases = (300000000000000000000004 /* Sources */, F00000000000000000000004 /* Frameworks */,);
+			buildRules = ();
+			dependencies = (500000000000000000000003 /* PBXTargetDependency */,);
+			name = ArgusTests;
+			productName = ArgusTests;
+			productReference = B00000000000000000000017 /* ArgusTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		D00000000000000000000001 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2660;
+				TargetAttributes = {
+					E00000000000000000000001 = {CreatedOnToolsVersion = 26.6;};
+					E00000000000000000000002 = {CreatedOnToolsVersion = 26.6;};
+					E00000000000000000000003 = {CreatedOnToolsVersion = 26.6; TestTargetID = E00000000000000000000001;};
+					E00000000000000000000004 = {CreatedOnToolsVersion = 26.6; TestTargetID = E00000000000000000000001;};
+				};
+			};
+			buildConfigurationList = 200000000000000000000004;
+			compatibilityVersion = "Xcode 15.0";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (en, Base,);
+			mainGroup = 100000000000000000000001;
+			productRefGroup = 100000000000000000000008 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (E00000000000000000000001 /* MetricsCore */, E00000000000000000000002 /* Metrics */, E00000000000000000000003 /* MetricsCoreTests */, E00000000000000000000004 /* ArgusTests */,);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		400000000000000000000001 /* Resources */ = {isa = PBXResourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000007 /* AppIcon.icns in Resources */, A00000000000000000000012 /* PrivacyInfo.xcprivacy in Resources */,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		300000000000000000000001 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000001, A00000000000000000000002, A00000000000000000000003, A0000000000000000000000C, A0000000000000000000000D, A0000000000000000000000F, A00000000000000000000013,); runOnlyForDeploymentPostprocessing = 0; };
+		300000000000000000000002 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000004, A00000000000000000000005, A00000000000000000000006, A0000000000000000000000E, A00000000000000000000010, A00000000000000000000011,); runOnlyForDeploymentPostprocessing = 0; };
+		300000000000000000000003 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000008, A00000000000000000000009,); runOnlyForDeploymentPostprocessing = 0; };
+		300000000000000000000004 /* Sources */ = {isa = PBXSourcesBuildPhase; buildActionMask = 2147483647; files = (A00000000000000000000014, A00000000000000000000015,); runOnlyForDeploymentPostprocessing = 0; };
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		500000000000000000000001 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = E00000000000000000000001 /* MetricsCore */; targetProxy = C00000000000000000000001; };
+		500000000000000000000002 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = E00000000000000000000001 /* MetricsCore */; targetProxy = C00000000000000000000002; };
+		500000000000000000000003 /* PBXTargetDependency */ = {isa = PBXTargetDependency; target = E00000000000000000000001 /* MetricsCore */; targetProxy = C00000000000000000000003; };
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		600000000000000000000001 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {DEFINES_MODULE = YES; MACH_O_TYPE = staticlib; PRODUCT_NAME = "$(TARGET_NAME)"; SKIP_INSTALL = YES; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
+		600000000000000000000002 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {DEAD_CODE_STRIPPING = YES; DEFINES_MODULE = YES; MACH_O_TYPE = staticlib; PRODUCT_NAME = "$(TARGET_NAME)"; SKIP_INSTALL = YES; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";}; name = Release;};
+		600000000000000000000003 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; INFOPLIST_FILE = Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus; PRODUCT_NAME = Argus; SWIFT_EMIT_LOC_STRINGS = NO;}; name = Debug;};
+		600000000000000000000004 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; COMBINE_HIDPI_IMAGES = YES; DEAD_CODE_STRIPPING = YES; INFOPLIST_FILE = Resources/Info.plist; LD_RUNPATH_SEARCH_PATHS = "$(inherited) @executable_path/../Frameworks"; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus; PRODUCT_NAME = Argus; STRIP_INSTALLED_PRODUCT = YES; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_EMIT_LOC_STRINGS = NO; SWIFT_OPTIMIZATION_LEVEL = "-O";}; name = Release;};
+		600000000000000000000005 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus.core-tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
+		600000000000000000000006 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus.core-tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";}; name = Release;};
+		600000000000000000000007 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEBUG_INFORMATION_FORMAT = dwarf; ENABLE_TESTABILITY = YES; GCC_OPTIMIZATION_LEVEL = 0; MACOSX_DEPLOYMENT_TARGET = 13.0; ONLY_ACTIVE_ARCH = YES; SDKROOT = macosx; SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG; SWIFT_VERSION = 6.0;}; name = Debug;};
+		600000000000000000000008 /* Release */ = {isa = XCBuildConfiguration; buildSettings = {ALWAYS_SEARCH_USER_PATHS = NO; CLANG_ENABLE_MODULES = YES; CLANG_ENABLE_OBJC_ARC = YES; DEAD_CODE_STRIPPING = YES; DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym"; LLVM_LTO = YES_THIN; MACOSX_DEPLOYMENT_TARGET = 13.0; SDKROOT = macosx; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_VERSION = 6.0;}; name = Release;};
+		600000000000000000000009 /* Debug */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_OPTIMIZATION_LEVEL = "-Onone";}; name = Debug;};
+		60000000000000000000000A /* Release */ = {isa = XCBuildConfiguration; buildSettings = {CODE_SIGN_STYLE = Automatic; GENERATE_INFOPLIST_FILE = YES; MACOSX_DEPLOYMENT_TARGET = 14.0; PRODUCT_BUNDLE_IDENTIFIER = com.maxmoon.argus.tests; PRODUCT_NAME = "$(TARGET_NAME)"; SWIFT_COMPILATION_MODE = wholemodule; SWIFT_OPTIMIZATION_LEVEL = "-O";}; name = Release;};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		200000000000000000000001 = {isa = XCConfigurationList; buildConfigurations = (600000000000000000000001, 600000000000000000000002,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		200000000000000000000002 = {isa = XCConfigurationList; buildConfigurations = (600000000000000000000003, 600000000000000000000004,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		200000000000000000000003 = {isa = XCConfigurationList; buildConfigurations = (600000000000000000000005, 600000000000000000000006,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		200000000000000000000004 = {isa = XCConfigurationList; buildConfigurations = (600000000000000000000007, 600000000000000000000008,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+		200000000000000000000005 = {isa = XCConfigurationList; buildConfigurations = (600000000000000000000009, 60000000000000000000000A,); defaultConfigurationIsVisible = 0; defaultConfigurationName = Release;};
+/* End XCConfigurationList section */
+	};
+	rootObject = D00000000000000000000001 /* Project object */;
+}
