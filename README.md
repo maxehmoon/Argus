@@ -9,15 +9,12 @@
 </p>
 
 <p align="center">
-  <code>macOS 13+</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>Swift 6</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>AppKit + SwiftUI</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>No third-party dependencies</code>
+  <code>macOS 13+</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>Swift 6</code>&nbsp;&nbsp;·&nbsp;&nbsp;<code>AppKit + SwiftUI</code>
 </p>
 
 Argus is a small macOS app for keeping an eye on what your Mac is doing. The
 menu bar gives you the quick answer, and clicking a widget opens the detail when
 you actually want it.
-
-That is really the whole idea. Argus should be useful when you need it and
-almost invisible when you do not.
 
 ## Why Argus?
 
@@ -26,8 +23,7 @@ He was said to have many eyes and was never completely asleep, which felt like a
 pretty good fit for a system monitor.
 
 The icon carries the same idea forward. Its eye was inspired by the Greek
-*mati*, commonly known as the evil eye, giving Argus a visual link to the same
-culture and theme of watchfulness.
+*mati*, commonly known as the evil eye. 🧿
 
 ## What it shows
 
@@ -54,8 +50,7 @@ public IP and country.
 ## Built to stay out of the way
 
 Argus is written in Swift using AppKit and a handful of focused SwiftUI views.
-There is no Electron shell, browser engine, Node.js runtime, or third-party
-package hiding underneath it.
+There is no Electron shell, browser engine, or Node.js runtime.
 
 It also tries not to collect data simply because it can:
 
@@ -103,27 +98,4 @@ xcodebuild \
   -scheme Metrics \
   -destination 'platform=macOS' \
   test
-```
-
-### Distribution signing
-
-If you have a Developer ID certificate, the same script can create a hardened
-build:
-
-```sh
-CODE_SIGN_IDENTITY='Developer ID Application: Your Name (TEAMID)' \
-  ./Scripts/build-app.sh
-```
-
-Releases distributed outside the Mac App Store also need to be notarized and
-stapled by Apple.
-
-## Project structure
-
-```text
-Sources/Metrics/       Menu-bar UI, settings, and AppKit/SwiftUI views
-Sources/MetricsCore/   Native samplers, formatters, and process ranking
-Tests/                 Unit tests for sampling, formatting, and preferences
-Resources/             App metadata, privacy manifest, and icon assets
-Scripts/               Local build and signing workflow
 ```
