@@ -3,9 +3,15 @@ import SwiftUI
 
 @MainActor
 final class SettingsWindowController: NSWindowController {
-  init(preferences: WidgetPreferences) {
+  init(
+    preferences: WidgetPreferences,
+    checkForUpdates: @escaping @MainActor () -> Void
+  ) {
     let hostingController = NSHostingController(
-      rootView: SettingsRootView(preferences: preferences)
+      rootView: SettingsRootView(
+        preferences: preferences,
+        checkForUpdates: checkForUpdates
+      )
     )
     let window = NSWindow(
       contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
@@ -75,6 +81,7 @@ private enum SettingsPage: String, CaseIterable, Identifiable {
 @MainActor
 private struct SettingsRootView: View {
   @ObservedObject var preferences: WidgetPreferences
+  let checkForUpdates: @MainActor () -> Void
   @AppStorage("settings.selectedPage") private var selectedPage =
     SettingsPage.widgets.rawValue
 
@@ -121,7 +128,7 @@ private struct SettingsRootView: View {
     case .general:
       GeneralSettingsPage(preferences: preferences)
     case .about:
-      AboutSettingsPage()
+      AboutSettingsPage(checkForUpdates: checkForUpdates)
     }
   }
 }
@@ -291,6 +298,8 @@ private struct GeneralSettingsPage: View {
 
 @MainActor
 private struct AboutSettingsPage: View {
+  let checkForUpdates: @MainActor () -> Void
+
   var body: some View {
     VStack(spacing: 14) {
       Image(nsImage: NSApp.applicationIconImage)
@@ -305,6 +314,9 @@ private struct AboutSettingsPage: View {
       Text("Native. Lightweight. Built for macOS.")
         .font(.callout)
         .foregroundStyle(.secondary)
+
+      Button("Check for Updates…", action: checkForUpdates)
+        .padding(.top, 4)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
     .padding(.bottom, 70)

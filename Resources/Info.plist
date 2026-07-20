@@ -32,5 +32,11 @@
     <true/>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
+    <key>SUEnableAutomaticChecks</key>
+    <true/>
+    <key>SUFeedURL</key>
+    <string>https://maxehmoon.github.io/Argus/appcast.xml</string>
+    <key>SUPublicEDKey</key>
+    <string>tvkyJvuFiNVdFBFbGpdXCDN4mqK/ais6Cr9E7dBN5iI=</string>
 </dict>
 </plist>

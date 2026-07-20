@@ -1,8 +1,14 @@
 import AppKit
+import Sparkle
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
   private let preferences = WidgetPreferences()
+  private let updaterController = SPUStandardUpdaterController(
+    startingUpdater: true,
+    updaterDelegate: nil,
+    userDriverDelegate: nil
+  )
   private var menuBarController: MenuBarController?
   private var settingsWindowController: SettingsWindowController?
 
@@ -52,7 +58,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
   private func showSettings() {
     if settingsWindowController == nil {
       settingsWindowController = SettingsWindowController(
-        preferences: preferences
+        preferences: preferences,
+        checkForUpdates: { [weak self] in
+          self?.updaterController.checkForUpdates(nil)
+        }
       )
     }
     settingsWindowController?.present()

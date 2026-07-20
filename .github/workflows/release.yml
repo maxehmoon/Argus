@@ -13,6 +13,8 @@ on:
 
 permissions:
   contents: write
+  pages: write
+  id-token: write
 
 jobs:
   build-and-release:
@@ -56,6 +58,27 @@ jobs:
       - name: Create checksum
         run: shasum -a 256 dist/Argus.dmg > dist/Argus.dmg.sha256
 
+      - name: Generate signed update feed
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+        shell: zsh
+        run: |
+          if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
+            echo "SPARKLE_PRIVATE_KEY is not configured." >&2
+            exit 1
+          fi
+
+          appcast_tool=".build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast"
+          mkdir -p dist/update-feed
+          print -rn -- "${SPARKLE_PRIVATE_KEY}" | "${appcast_tool}" \
+            --ed-key-file - \
+            --download-url-prefix "https://github.com/maxehmoon/Argus/releases/download/${RELEASE_TAG}/" \
+            --link "https://github.com/maxehmoon/Argus" \
+            --maximum-versions 1 \
+            --maximum-deltas 0 \
+            -o dist/update-feed/appcast.xml \
+            dist
+
       - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
@@ -66,3 +89,23 @@ jobs:
           --verify-tag
           --title "Argus ${RELEASE_TAG#v}"
           --generate-notes
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload update feed
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: dist/update-feed
+
+  deploy-update-feed:
+    needs: build-and-release
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Publish update feed
+        id: deployment
+        uses: actions/deploy-pages@v4
