@@ -29,7 +29,6 @@ jobs:
           ref: ${{ env.RELEASE_TAG }}
 
       - name: Validate release version
-        shell: zsh
         run: |
           app_version=$(/usr/libexec/PlistBuddy \
             -c 'Print :CFBundleShortVersionString' \
@@ -61,7 +60,6 @@ jobs:
       - name: Generate signed update feed
         env:
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        shell: zsh
         run: |
           if [[ -z "${SPARKLE_PRIVATE_KEY}" ]]; then
             echo "SPARKLE_PRIVATE_KEY is not configured." >&2
@@ -70,7 +68,7 @@ jobs:
 
           appcast_tool=".build/SourcePackages/artifacts/sparkle/Sparkle/bin/generate_appcast"
           mkdir -p dist/update-feed
-          print -rn -- "${SPARKLE_PRIVATE_KEY}" | "${appcast_tool}" \
+          printf '%s' "${SPARKLE_PRIVATE_KEY}" | "${appcast_tool}" \
             --ed-key-file - \
             --download-url-prefix "https://github.com/maxehmoon/Argus/releases/download/${RELEASE_TAG}/" \
             --link "https://github.com/maxehmoon/Argus" \
