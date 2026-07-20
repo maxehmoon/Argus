@@ -7,6 +7,11 @@ DERIVED_DATA="${PROJECT_ROOT}/.build"
 APP_BUNDLE="${PROJECT_ROOT}/dist/Argus.app"
 BUILT_APP="${DERIVED_DATA}/Build/Products/Release/Argus.app"
 SIGN_IDENTITY="${CODE_SIGN_IDENTITY:--}"
+if [[ "${SIGN_IDENTITY}" == "-" ]]; then
+    HARDENED_RUNTIME=NO
+else
+    HARDENED_RUNTIME=YES
+fi
 
 xcodebuild \
     -project "${PROJECT_ROOT}/Metrics.xcodeproj" \
@@ -16,6 +21,7 @@ xcodebuild \
     -derivedDataPath "${DERIVED_DATA}" \
     CODE_SIGNING_ALLOWED=YES \
     CODE_SIGN_IDENTITY="${SIGN_IDENTITY}" \
+    ENABLE_HARDENED_RUNTIME="${HARDENED_RUNTIME}" \
     build
 
 rm -rf "${APP_BUNDLE}" "${PROJECT_ROOT}/dist/Metrics.app"
