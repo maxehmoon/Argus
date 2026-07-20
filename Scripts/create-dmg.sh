@@ -21,7 +21,7 @@ ditto "${APP_BUNDLE}" "${STAGING_VOLUME}/Argus.app"
 ln -s /Applications "${STAGING_VOLUME}/Applications"
 
 mkdir -p "${PROJECT_ROOT}/dist"
-if diskutil image create from --help >/dev/null 2>&1; then
+if diskutil image create from --help 2>&1 | grep -q -- '--volumeName'; then
     diskutil image create from \
         --volumeName "Argus" \
         --format UDZO \
