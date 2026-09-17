@@ -1,11 +1,13 @@
 import Foundation
 
 public enum StatsFormatter {
-  public static func percentage(_ value: Double) -> String {
-    "\(Int(value.rounded()))%"
+  public static func percentage(_ value: Double?) -> String {
+    guard let value, value.isFinite, value >= 0 else { return "–" }
+    return "\(Int(min(100, value).rounded()))%"
   }
 
-  public static func rate(_ bytesPerSecond: Double) -> String {
+  public static func rate(_ bytesPerSecond: Double?) -> String {
+    guard let bytesPerSecond, bytesPerSecond.isFinite, bytesPerSecond >= 0 else { return "–" }
     if bytesPerSecond >= 1_000_000_000 {
       return String(format: "%.1f GB/s", bytesPerSecond / 1_000_000_000)
     }

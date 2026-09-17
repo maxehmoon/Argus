@@ -30,6 +30,10 @@
     <true/>
     <key>NSHighResolutionCapable</key>
     <true/>
+    <key>NSLocationUsageDescription</key>
+    <string>Allow Argus to display the name of your current Wi-Fi network. Argus does not collect or store your location.</string>
+    <key>NSLocationWhenInUseUsageDescription</key>
+    <string>Allow Argus to display the name of your current Wi-Fi network. Argus does not collect or store your location.</string>
     <key>NSPrincipalClass</key>
     <string>NSApplication</string>
     <key>SUEnableAutomaticChecks</key>

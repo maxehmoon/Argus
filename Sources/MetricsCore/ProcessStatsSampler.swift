@@ -57,126 +57,81 @@ public struct AppStorageUsage: Sendable, Equatable {
 }
 
 public actor ProcessStatsSampler {
-  private var cachedCPUSample:
-    (
-      batch: ProcessSampleBatch,
-      capturedAt: ContinuousClock.Instant
-    )?
-  private var cachedStorageSample:
-    (
-      batch: ProcessSampleBatch,
-      capturedAt: ContinuousClock.Instant
-    )?
+  private var cachedSample: (batch: ProcessSampleBatch, capturedAt: ContinuousClock.Instant)?
 
   public init() {}
 
-  public func topCPUApplications(limit: Int = 5) async -> [AppCPUUsage] {
+  public func topCPUApplications(limit: Int = 5) async -> [AppCPUUsage]? {
     guard limit > 0 else { return [] }
-
-    let now = ContinuousClock.now
-    let first: ProcessSampleBatch
-    if let cachedCPUSample,
-      cachedCPUSample.capturedAt.duration(to: now) < .milliseconds(250)
-    {
-      first = cachedCPUSample.batch
-    } else {
-      first = await Task.detached(priority: .utility) {
-        Self.captureProcesses()
-      }.value
-    }
-    cachedCPUSample = (first, ContinuousClock.now)
-
-    do {
-      try await Task.sleep(for: .seconds(1))
-    } catch {
-      return []
-    }
-
-    let second = await Task.detached(priority: .utility) {
-      Self.captureProcesses()
-    }.value
-    cachedCPUSample = (second, ContinuousClock.now)
-    guard !Task.isCancelled else { return [] }
-
+    guard let (first, second) = await samplePair() else { return nil }
     return await Task.detached(priority: .utility) {
       rankCPUApplications(previous: first, current: second, limit: limit)
     }.value
   }
 
-  public func topMemoryApplications(limit: Int = 5) async -> [AppMemoryUsage] {
+  public func topMemoryApplications(limit: Int = 5) async -> [AppMemoryUsage]? {
     guard limit > 0 else { return [] }
-
+    guard !Task.isCancelled else { return nil }
     return await Task.detached(priority: .utility) {
-      rankMemoryApplications(samples: Self.captureProcesses().samples, limit: limit)
+      Self.captureProcesses().map { rankMemoryApplications(samples: $0.samples, limit: limit) }
     }.value
   }
 
-  public func topEnergyApplications(limit: Int = 5) async -> [AppEnergyUsage] {
+  public func topEnergyApplications(limit: Int = 5) async -> [AppEnergyUsage]? {
     guard limit > 0 else { return [] }
-
-    let first = await Task.detached(priority: .utility) {
-      Self.captureProcesses()
-    }.value
-    do {
-      try await Task.sleep(for: .seconds(1))
-    } catch {
-      return []
-    }
-
-    let second = await Task.detached(priority: .utility) {
-      Self.captureProcesses()
-    }.value
-    guard !Task.isCancelled else { return [] }
-
+    guard let (first, second) = await samplePair(),
+      hasCPUEnergyCounters(previous: first, current: second)
+    else { return nil }
     return await Task.detached(priority: .utility) {
       rankEnergyApplications(previous: first, current: second, limit: limit)
     }.value
   }
 
-  public func topStorageApplications(limit: Int = 5) async -> [AppStorageUsage] {
+  public func topStorageApplications(limit: Int = 5) async -> [AppStorageUsage]? {
     guard limit > 0 else { return [] }
-
-    let now = ContinuousClock.now
-    let first: ProcessSampleBatch
-    if let cachedStorageSample,
-      cachedStorageSample.capturedAt.duration(to: now) < .milliseconds(250)
-    {
-      first = cachedStorageSample.batch
-    } else {
-      first = await Task.detached(priority: .utility) {
-        Self.captureProcesses()
-      }.value
-    }
-    cachedStorageSample = (first, ContinuousClock.now)
-
-    do {
-      try await Task.sleep(for: .seconds(1))
-    } catch {
-      return []
-    }
-
-    let second = await Task.detached(priority: .utility) {
-      Self.captureProcesses()
-    }.value
-    cachedStorageSample = (second, ContinuousClock.now)
-    guard !Task.isCancelled else { return [] }
-
+    guard let (first, second) = await samplePair() else { return nil }
     return await Task.detached(priority: .utility) {
       rankStorageApplications(previous: first, current: second, limit: limit)
     }.value
   }
 
-  private static func captureProcesses() -> ProcessSampleBatch {
+  // Consecutive panels reuse the last batch; CPU, disk and CPU energy all come
+  // from the same rusage read. Never reuse a batch across a pause or cancellation.
+  private func samplePair() async -> (ProcessSampleBatch, ProcessSampleBatch)? {
+    guard !Task.isCancelled else { return nil }
+    let started = ContinuousClock.now
+    let first: ProcessSampleBatch?
+    if let cachedSample,
+      cachedSample.capturedAt.duration(to: .now) < .milliseconds(250)
+    {
+      first = cachedSample.batch
+    } else {
+      first = await Task.detached(priority: .utility) { Self.captureProcesses() }.value
+    }
+    cachedSample = nil
+    do {
+      try await Task.sleep(for: .seconds(1))
+    } catch {
+      return nil
+    }
+    guard let first, !Task.isCancelled else { return nil }
+    let second = await Task.detached(priority: .utility) { Self.captureProcesses() }.value
+    guard !Task.isCancelled, let second,
+      started.duration(to: .now) <= .seconds(10),
+      validProcessInterval(previous: first, current: second)
+    else { return nil }
+    cachedSample = (second, .now)
+    return (first, second)
+  }
+
+  private static func captureProcesses() -> ProcessSampleBatch? {
     let estimatedBytes = max(
       0,
       Int(proc_listpids(UInt32(PROC_ALL_PIDS), 0, nil, 0))
     )
     let estimatedCount = estimatedBytes / MemoryLayout<pid_t>.stride
     guard estimatedCount > 0 else {
-      return ProcessSampleBatch(
-        timestamp: clock_gettime_nsec_np(CLOCK_MONOTONIC_RAW),
-        samples: [:]
-      )
+      return nil
     }
 
     var pids = [pid_t](repeating: 0, count: estimatedCount + 64)
@@ -198,7 +153,7 @@ public actor ProcessStatsSampler {
       samples[pid] = sample
     }
 
-    return ProcessSampleBatch(timestamp: timestamp, samples: samples)
+    return samples.isEmpty ? nil : ProcessSampleBatch(timestamp: timestamp, samples: samples)
   }
 
   private static func processSample(pid: pid_t) -> RawProcessSample? {
@@ -210,13 +165,13 @@ public actor ProcessStatsSampler {
     }
     guard result == 0 else { return nil }
 
-    let (cpuTime, overflow) = info.ri_user_time.addingReportingOverflow(info.ri_system_time)
+    let (cpuTimeTicks, overflow) = info.ri_user_time.addingReportingOverflow(info.ri_system_time)
     guard !overflow else { return nil }
 
     return RawProcessSample(
       pid: pid,
       startTime: info.ri_proc_start_abstime,
-      cpuTime: cpuTime,
+      cpuTimeTicks: cpuTimeTicks,
       footprint: info.ri_phys_footprint,
       energyNanojoules: info.ri_energy_nj,
       diskReadBytes: info.ri_diskio_bytesread,
@@ -228,7 +183,7 @@ public actor ProcessStatsSampler {
 struct RawProcessSample: Sendable, Equatable {
   let pid: pid_t
   let startTime: UInt64
-  let cpuTime: UInt64
+  let cpuTimeTicks: UInt64
   let footprint: UInt64
   let energyNanojoules: UInt64
   let diskReadBytes: UInt64
@@ -237,7 +192,7 @@ struct RawProcessSample: Sendable, Equatable {
   init(
     pid: pid_t,
     startTime: UInt64,
-    cpuTime: UInt64,
+    cpuTimeTicks: UInt64,
     footprint: UInt64,
     energyNanojoules: UInt64 = 0,
     diskReadBytes: UInt64 = 0,
@@ -245,7 +200,7 @@ struct RawProcessSample: Sendable, Equatable {
   ) {
     self.pid = pid
     self.startTime = startTime
-    self.cpuTime = cpuTime
+    self.cpuTimeTicks = cpuTimeTicks
     self.footprint = footprint
     self.energyNanojoules = energyNanojoules
     self.diskReadBytes = diskReadBytes
@@ -327,24 +282,25 @@ func rankCPUApplications(
   previous: ProcessSampleBatch,
   current: ProcessSampleBatch,
   limit: Int,
+  timebase: MachTimebase = .system,
   resolveIdentity: (pid_t) -> ProcessIdentity? = ProcessIdentityResolver.resolve
 ) -> [AppCPUUsage] {
-  guard current.timestamp > previous.timestamp, limit > 0 else { return [] }
+  guard validProcessInterval(previous: previous, current: current), limit > 0 else { return [] }
   let elapsed = current.timestamp - previous.timestamp
-  var totals: [String: (identity: ProcessIdentity, cpuTime: UInt64)] = [:]
+  var totals: [String: (identity: ProcessIdentity, cpuTimeTicks: UInt64)] = [:]
 
   for (pid, sample) in current.samples {
     guard
       let prior = previous.samples[pid],
       prior.startTime == sample.startTime,
-      sample.cpuTime >= prior.cpuTime
+      sample.cpuTimeTicks >= prior.cpuTimeTicks
     else {
       continue
     }
 
-    let delta = sample.cpuTime - prior.cpuTime
+    let delta = sample.cpuTimeTicks - prior.cpuTimeTicks
     guard delta > 0, let identity = resolveIdentity(pid) else { continue }
-    let existing = totals[identity.aggregationKey]?.cpuTime ?? 0
+    let existing = totals[identity.aggregationKey]?.cpuTimeTicks ?? 0
     totals[identity.aggregationKey] = (identity, existing &+ delta)
   }
 
@@ -353,7 +309,7 @@ func rankCPUApplications(
       AppCPUUsage(
         name: value.identity.name,
         bundlePath: value.identity.bundlePath,
-        percent: Double(value.cpuTime) / Double(elapsed) * 100
+        percent: timebase.nanoseconds(for: value.cpuTimeTicks) / Double(elapsed) * 100
       )
     }
     .sorted { lhs, rhs in
@@ -400,7 +356,7 @@ func rankEnergyApplications(
   limit: Int,
   resolveIdentity: (pid_t) -> ProcessIdentity? = ProcessIdentityResolver.resolve
 ) -> [AppEnergyUsage] {
-  guard current.timestamp > previous.timestamp, limit > 0 else { return [] }
+  guard validProcessInterval(previous: previous, current: current), limit > 0 else { return [] }
   let elapsedNanoseconds = current.timestamp - previous.timestamp
   var totals: [String: (identity: ProcessIdentity, energy: UInt64)] = [:]
 
@@ -439,7 +395,7 @@ func rankStorageApplications(
   limit: Int,
   resolveIdentity: (pid_t) -> ProcessIdentity? = ProcessIdentityResolver.resolve
 ) -> [AppStorageUsage] {
-  guard current.timestamp > previous.timestamp, limit > 0 else { return [] }
+  guard validProcessInterval(previous: previous, current: current), limit > 0 else { return [] }
   let elapsedNanoseconds = current.timestamp - previous.timestamp
   var totals: [String: (identity: ProcessIdentity, read: UInt64, written: UInt64)] =
     [:]
@@ -483,4 +439,31 @@ func rankStorageApplications(
     }
     .prefix(limit)
     .map(\.self)
+}
+
+struct MachTimebase: Sendable {
+  let numerator: UInt32
+  let denominator: UInt32
+
+  static let system: Self = {
+    var info = mach_timebase_info_data_t()
+    mach_timebase_info(&info)
+    return Self(numerator: info.numer, denominator: info.denom)
+  }()
+
+  func nanoseconds(for ticks: UInt64) -> Double {
+    Double(ticks) * Double(numerator) / Double(denominator)
+  }
+}
+
+func validProcessInterval(previous: ProcessSampleBatch, current: ProcessSampleBatch) -> Bool {
+  current.timestamp > previous.timestamp
+    && current.timestamp - previous.timestamp <= 10_000_000_000
+}
+
+func hasCPUEnergyCounters(previous: ProcessSampleBatch, current: ProcessSampleBatch) -> Bool {
+  // Unsupported kernels (including Intel) return zero for every lifetime counter.
+  // An unchanged, non-zero counter is a valid idle sample.
+  previous.samples.values.contains { $0.energyNanojoules > 0 }
+    || current.samples.values.contains { $0.energyNanojoules > 0 }
 }

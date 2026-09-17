@@ -32,8 +32,9 @@ private final class ResourceHistoryModel: ObservableObject {
   @Published var isAnimationActive = false
   private(set) var historyInterval: TimeInterval
   private(set) var positions: [Double] = []
-  private(set) var primaryValues: [Double] = []
-  private(set) var secondaryValues: [Double] = []
+  private(set) var primaryValues: [Double?] = []
+  private(set) var secondaryValues: [Double?] = []
+  private(set) var breaks: [Bool] = []
   private(set) var referenceDate = Date()
 
   init(historyInterval: TimeInterval) {
@@ -42,13 +43,15 @@ private final class ResourceHistoryModel: ObservableObject {
 
   func update(
     positions: [Double],
-    primaryValues: [Double],
-    secondaryValues: [Double],
+    primaryValues: [Double?],
+    secondaryValues: [Double?],
+    breaks: [Bool],
     historyInterval: TimeInterval
   ) {
     self.positions = positions
     self.primaryValues = primaryValues
     self.secondaryValues = secondaryValues
+    self.breaks = breaks
     self.historyInterval = max(1, historyInterval)
     referenceDate = Date()
     revision &+= 1
@@ -57,6 +60,7 @@ private final class ResourceHistoryModel: ObservableObject {
 
 @MainActor
 private struct ResourceHistoryContent: View {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   @ObservedObject var model: ResourceHistoryModel
   let primaryColor: Color
   let secondaryColor: Color?
@@ -70,7 +74,7 @@ private struct ResourceHistoryContent: View {
     TimelineView(
       .animation(
         minimumInterval: 1.0 / 30.0,
-        paused: !model.isAnimationActive
+        paused: !model.isAnimationActive || reduceMotion
       )
     ) { timeline in
       Canvas { context, size in
@@ -84,8 +88,8 @@ private struct ResourceHistoryContent: View {
         let positions = model.positions.map { $0 - positionOffset }
 
         let observedMaximum = max(
-          model.primaryValues.max() ?? 0,
-          model.secondaryValues.max() ?? 0
+          model.primaryValues.compactMap { $0 }.max() ?? 0,
+          model.secondaryValues.compactMap { $0 }.max() ?? 0
         )
         let maximum = max(1, fixedMaximum ?? observedMaximum * 1.12)
 
@@ -173,7 +177,7 @@ private struct ResourceHistoryContent: View {
   }
 
   private func drawSeries(
-    _ values: [Double],
+    _ values: [Double?],
     positions: [Double],
     color: Color,
     fillsArea: Bool,
@@ -181,37 +185,33 @@ private struct ResourceHistoryContent: View {
     in context: inout GraphicsContext,
     size: CGSize
   ) {
-    guard !values.isEmpty else { return }
-
-    let visiblePositions = positions.suffix(values.count)
-    let points = zip(visiblePositions, values).map { position, value in
-      CGPoint(
-        x: size.width * min(1, max(0, position)),
-        y: size.height * (1 - min(1, max(0, value) / maximum))
-      )
+    for segment in historySegments(positions: positions, values: values, breaks: model.breaks) {
+      let points = segment.map {
+        CGPoint(
+          x: size.width * $0.position,
+          y: yPosition(for: $0.value, maximum: maximum, height: size.height))
+      }
+      guard let first = points.first, let last = points.last else { continue }
+      if points.count == 1 {
+        context.fill(
+          Path(ellipseIn: CGRect(x: first.x - 1.5, y: first.y - 1.5, width: 3, height: 3)),
+          with: .color(color))
+        continue
+      }
+      var line = Path()
+      line.move(to: first)
+      for point in points.dropFirst() { line.addLine(to: point) }
+      if fillsArea {
+        var area = line
+        area.addLine(to: CGPoint(x: last.x, y: size.height))
+        area.addLine(to: CGPoint(x: first.x, y: size.height))
+        area.closeSubpath()
+        context.fill(area, with: .color(color.opacity(0.10)))
+      }
+      context.stroke(
+        line, with: .color(color),
+        style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round))
     }
-
-    var line = Path()
-    line.move(to: CGPoint(x: 0, y: points[0].y))
-    line.addLine(to: points[0])
-    for point in points.dropFirst() {
-      line.addLine(to: point)
-    }
-    line.addLine(to: CGPoint(x: size.width, y: points.last?.y ?? 0))
-
-    if fillsArea {
-      var area = line
-      area.addLine(to: CGPoint(x: size.width, y: size.height))
-      area.addLine(to: CGPoint(x: 0, y: size.height))
-      area.closeSubpath()
-      context.fill(area, with: .color(color.opacity(0.10)))
-    }
-
-    context.stroke(
-      line,
-      with: .color(color),
-      style: StrokeStyle(lineWidth: 1.6, lineCap: .round, lineJoin: .round)
-    )
   }
 
   private func drawInspection(
@@ -228,6 +228,7 @@ private struct ResourceHistoryContent: View {
     let targetPosition = min(1, max(0, location.x / size.width))
     let visibleIndices = positions.indices.filter {
       positions[$0] >= 0 && positions[$0] <= 1
+        && model.primaryValues.indices.contains($0) && model.primaryValues[$0] != nil
     }
     guard
       let index = visibleIndices.min(by: {
@@ -239,7 +240,7 @@ private struct ResourceHistoryContent: View {
 
     let position = positions[index]
     let x = size.width * position
-    let primary = model.primaryValues[index]
+    guard let primary = model.primaryValues[index] else { return }
     let primaryY = yPosition(for: primary, maximum: maximum, height: size.height)
     let secondary = secondaryValue(atPositionIndex: index, positionCount: positions.count)
 
@@ -388,8 +389,9 @@ final class ResourceHistoryView: NSView {
 
   func update(
     positions: [Double],
-    primaryValues: [Double],
-    secondaryValues: [Double],
+    primaryValues: [Double?],
+    secondaryValues: [Double?],
+    breaks: [Bool],
     historyInterval: TimeInterval,
     accessibilityLabel: String
   ) {
@@ -397,6 +399,7 @@ final class ResourceHistoryView: NSView {
       positions: positions,
       primaryValues: primaryValues,
       secondaryValues: secondaryValues,
+      breaks: breaks,
       historyInterval: historyInterval
     )
     setAccessibilityLabel(accessibilityLabel)
@@ -1232,11 +1235,12 @@ private final class InlineMetricsModel: ObservableObject {
 
 @MainActor
 private struct InlineMetricValue: View {
+  @Environment(\.accessibilityReduceMotion) private var reduceMotion
   let item: InlineMetricDisplayItem
   let loadingEffectsActive: Bool
 
   var body: some View {
-    if item.showsLoadingShimmer, loadingEffectsActive {
+    if item.showsLoadingShimmer, loadingEffectsActive, !reduceMotion {
       TimelineView(.animation(minimumInterval: 1.0 / 30.0)) { timeline in
         let progress =
           timeline.date.timeIntervalSinceReferenceDate

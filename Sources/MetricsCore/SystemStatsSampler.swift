@@ -9,30 +9,20 @@ private struct CPUTicks: Equatable {
   let nice: UInt32
 }
 
-private struct InterfaceBytes: Equatable {
-  let received: UInt64
-  let sent: UInt64
-}
-
-private struct StorageBytes: Equatable {
-  let read: UInt64
-  let written: UInt64
-}
-
 private struct CPUSample {
-  let percent: Double
+  let percent: Double?
   let breakdown: CPUUsageBreakdown?
 }
 
 private struct MemorySample {
-  let usedBytes: UInt64
+  let usedBytes: UInt64?
   let breakdown: MemoryBreakdown?
 }
 
 private struct NetworkSample {
-  let rate: InterfaceBytesPerSecond
-  let totalReceivedBytes: UInt64
-  let totalSentBytes: UInt64
+  let rate: CounterRates?
+  let totalReceivedBytes: UInt64?
+  let totalSentBytes: UInt64?
 }
 
 public final class SystemStatsSampler {
@@ -47,18 +37,20 @@ public final class SystemStatsSampler {
   private let additionalSampler = AdditionalStatsSampler()
 
   private var previousCPU: CPUTicks?
-  private var previousInterfaces: [UInt16: InterfaceBytes] = [:]
-  private var currentInterfaces: [UInt16: InterfaceBytes] = [:]
-  private var previousNetworkTime: UInt64?
-  private var previousStorageBytes: StorageBytes?
-  private var previousStorageTime: UInt64?
+  private var previousCPUTime: UInt64?
+  private var networkIsConnected: Bool?
+  private var currentInterfaces: [String: IOCounters] = [:]
+  private var networkRates = CounterRateSampler<String>()
+  private var storageRates = CounterRateSampler<UInt64>()
+  private var sampledInterfaceName: String?
+  private var physicalStorageDevices: [UInt64: Bool] = [:]
 
   private var routeMIB: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
   private var routeBuffer: UnsafeMutableRawPointer
   private var routeBufferSize: Int
 
   var sampledNetworkInterfaceCount: Int {
-    previousInterfaces.count
+    currentInterfaces.count
   }
 
   public init() {
@@ -90,8 +82,7 @@ public final class SystemStatsSampler {
       alignment: MemoryLayout<if_msghdr2>.alignment
     )
 
-    previousInterfaces.reserveCapacity(64)
-    currentInterfaces.reserveCapacity(64)
+    currentInterfaces.reserveCapacity(1)
   }
 
   deinit {
@@ -100,27 +91,28 @@ public final class SystemStatsSampler {
   }
 
   public func sample(options: SystemSampleOptions = .all) -> StatsSnapshot {
+    if !options.contains(.cpu) { previousCPU = nil; previousCPUTime = nil }
+    if !options.contains(.network) { networkRates = CounterRateSampler() }
+    if !options.contains(.storage) { storageRates = CounterRateSampler() }
+    let networkIdentity = options.contains(.network) ? additionalSampler.networkIdentity() : nil
+    sampledInterfaceName = networkIdentity?.name
     let now = mach_continuous_time()
     let cpu =
       options.contains(.cpu)
-      ? sampleCPU()
-      : CPUSample(percent: 0, breakdown: nil)
+      ? sampleCPU(at: now)
+      : CPUSample(percent: nil, breakdown: nil)
     let memory =
       options.contains(.memory)
       ? sampleMemory()
-      : MemorySample(usedBytes: 0, breakdown: nil)
+      : MemorySample(usedBytes: nil, breakdown: nil)
     let network =
       options.contains(.network)
       ? sampleNetwork(at: now)
       : NetworkSample(
-        rate: InterfaceBytesPerSecond(received: 0, sent: 0),
-        totalReceivedBytes: 0,
-        totalSentBytes: 0
+        rate: nil,
+        totalReceivedBytes: nil,
+        totalSentBytes: nil
       )
-    let networkIdentity =
-      options.contains(.network)
-      ? additionalSampler.networkIdentity()
-      : nil
     let storageActivity =
       options.contains(.storage)
       ? sampleStorageActivity(at: now)
@@ -130,8 +122,8 @@ public final class SystemStatsSampler {
       cpuPercent: cpu.percent,
       memoryUsed: memory.usedBytes,
       memoryTotal: physicalMemory,
-      downloadBytesPerSecond: network.rate.received,
-      uploadBytesPerSecond: network.rate.sent,
+      downloadBytesPerSecond: network.rate?.first,
+      uploadBytesPerSecond: network.rate?.second,
       storage: options.contains(.storage) ? additionalSampler.storage() : nil,
       battery: options.contains(.battery) ? additionalSampler.battery() : nil,
       swap: options.contains(.swap) ? additionalSampler.swap() : nil,
@@ -144,10 +136,12 @@ public final class SystemStatsSampler {
         ? NetworkDetails(
           totalReceivedBytes: network.totalReceivedBytes,
           totalSentBytes: network.totalSentBytes,
+          isConnected: networkIsConnected,
           interfaceName: networkIdentity?.name,
           interfaceType: networkIdentity?.type,
           networkName: networkIdentity?.networkName,
           localAddress: networkIdentity?.localAddress,
+          ipv6Address: networkIdentity?.ipv6Address,
           gatewayAddress: networkIdentity?.gatewayAddress,
           dnsServers: networkIdentity?.dnsServers ?? [],
           signalDBm: networkIdentity?.signalDBm,
@@ -165,9 +159,15 @@ public final class SystemStatsSampler {
 
   public func invalidateNetworkIdentityCache() {
     additionalSampler.invalidateNetworkIdentity()
+    networkRates = CounterRateSampler()
   }
 
-  private func sampleCPU() -> CPUSample {
+  public func updateNetworkConnection(isConnected: Bool) {
+    networkIsConnected = isConnected
+    invalidateNetworkIdentityCache()
+  }
+
+  private func sampleCPU(at now: UInt64) -> CPUSample {
     var load = host_cpu_load_info_data_t()
     var count = mach_msg_type_number_t(
       MemoryLayout<host_cpu_load_info_data_t>.size / MemoryLayout<integer_t>.size
@@ -178,7 +178,9 @@ public final class SystemStatsSampler {
       }
     }
     guard result == KERN_SUCCESS else {
-      return CPUSample(percent: 0, breakdown: nil)
+      previousCPU = nil
+      previousCPUTime = nil
+      return CPUSample(percent: nil, breakdown: nil)
     }
 
     let current = CPUTicks(
@@ -187,9 +189,11 @@ public final class SystemStatsSampler {
       idle: load.cpu_ticks.2,
       nice: load.cpu_ticks.3
     )
-    defer { previousCPU = current }
-    guard let previousCPU else {
-      return CPUSample(percent: 0, breakdown: nil)
+    defer { previousCPU = current; previousCPUTime = now }
+    guard let previousCPU, let previousCPUTime,
+      now > previousCPUTime, seconds(now - previousCPUTime) <= 10
+    else {
+      return CPUSample(percent: nil, breakdown: nil)
     }
 
     let user = tickDelta(from: previousCPU.user, to: current.user)
@@ -199,7 +203,7 @@ public final class SystemStatsSampler {
     let total = user + system + idle + nice
 
     guard total > 0 else {
-      return CPUSample(percent: 0, breakdown: nil)
+      return CPUSample(percent: nil, breakdown: nil)
     }
     let userPercent = Double(user + nice) / Double(total) * 100
     let systemPercent = Double(system) / Double(total) * 100
@@ -225,7 +229,7 @@ public final class SystemStatsSampler {
       }
     }
     guard result == KERN_SUCCESS else {
-      return MemorySample(usedBytes: 0, breakdown: nil)
+      return MemorySample(usedBytes: nil, breakdown: nil)
     }
 
     // Activity Monitor's high-level categories use resident internal pages
@@ -265,148 +269,74 @@ public final class SystemStatsSampler {
     return memoryPressureLevel(rawValue: rawValue)
   }
 
+  private func seconds(_ ticks: UInt64) -> Double {
+    Double(ticks) * Double(timebaseNumerator) / Double(timebaseDenominator) / 1_000_000_000
+  }
+
   private func sampleNetwork(at now: UInt64) -> NetworkSample {
     currentInterfaces.removeAll(keepingCapacity: true)
-    guard readCurrentInterfaces() else {
-      return NetworkSample(
-        rate: InterfaceBytesPerSecond(received: 0, sent: 0),
-        totalReceivedBytes: 0,
-        totalSentBytes: 0
-      )
-    }
-
-    let totalReceived = currentInterfaces.values.reduce(0) { $0 + $1.received }
-    let totalSent = currentInterfaces.values.reduce(0) { $0 + $1.sent }
-
-    defer {
-      swap(&previousInterfaces, &currentInterfaces)
-      previousNetworkTime = now
-    }
-
-    guard let previousNetworkTime, now > previousNetworkTime else {
-      return NetworkSample(
-        rate: InterfaceBytesPerSecond(received: 0, sent: 0),
-        totalReceivedBytes: totalReceived,
-        totalSentBytes: totalSent
-      )
-    }
-
-    let elapsed =
-      Double(now - previousNetworkTime)
-      * Double(timebaseNumerator)
-      / Double(timebaseDenominator)
-      / 1_000_000_000
-    guard elapsed <= 10 else {
-      return NetworkSample(
-        rate: InterfaceBytesPerSecond(received: 0, sent: 0),
-        totalReceivedBytes: totalReceived,
-        totalSentBytes: totalSent
-      )
-    }
-    var received: UInt64 = 0
-    var sent: UInt64 = 0
-
-    for (index, current) in currentInterfaces {
-      guard let previous = previousInterfaces[index] else { continue }
-      if current.received >= previous.received {
-        received += current.received - previous.received
-      }
-      if current.sent >= previous.sent {
-        sent += current.sent - previous.sent
-      }
-    }
-
+    let succeeded = readCurrentInterfaces()
+    let counters = succeeded ? currentInterfaces : nil
+    let rate = networkRates.sample(counters, at: seconds(now))
+    let totals = succeeded ? currentInterfaces.values.first : nil
     return NetworkSample(
-      rate: InterfaceBytesPerSecond(
-        received: Double(received) / elapsed,
-        sent: Double(sent) / elapsed
-      ),
-      totalReceivedBytes: totalReceived,
-      totalSentBytes: totalSent
+      rate: rate,
+      totalReceivedBytes: totals?.first,
+      totalSentBytes: totals?.second
     )
   }
 
-  private func sampleStorageActivity(at now: UInt64) -> StorageActivity {
-    guard let current = readStorageBytes() else {
-      return StorageActivity(readBytesPerSecond: 0, writeBytesPerSecond: 0)
+  private func sampleStorageActivity(at now: UInt64) -> StorageActivity? {
+    storageRates.sample(readStorageBytes(), at: seconds(now)).map {
+      StorageActivity(readBytesPerSecond: $0.first, writeBytesPerSecond: $0.second)
     }
-
-    defer {
-      previousStorageBytes = current
-      previousStorageTime = now
-    }
-
-    guard
-      let previousStorageBytes,
-      let previousStorageTime,
-      now > previousStorageTime
-    else {
-      return StorageActivity(readBytesPerSecond: 0, writeBytesPerSecond: 0)
-    }
-
-    let elapsed =
-      Double(now - previousStorageTime)
-      * Double(timebaseNumerator)
-      / Double(timebaseDenominator)
-      / 1_000_000_000
-    guard elapsed > 0, elapsed <= 10 else {
-      return StorageActivity(readBytesPerSecond: 0, writeBytesPerSecond: 0)
-    }
-
-    let read =
-      current.read >= previousStorageBytes.read
-      ? current.read - previousStorageBytes.read
-      : 0
-    let written =
-      current.written >= previousStorageBytes.written
-      ? current.written - previousStorageBytes.written
-      : 0
-    return StorageActivity(
-      readBytesPerSecond: Double(read) / elapsed,
-      writeBytesPerSecond: Double(written) / elapsed
-    )
   }
 
-  private func readStorageBytes() -> StorageBytes? {
+  private func readStorageBytes() -> [UInt64: IOCounters]? {
     var iterator: io_iterator_t = 0
     guard
       IOServiceGetMatchingServices(
-        kIOMainPortDefault,
-        IOServiceMatching("IOBlockStorageDriver"),
-        &iterator
+        kIOMainPortDefault, IOServiceMatching("IOBlockStorageDriver"), &iterator
       ) == KERN_SUCCESS
     else { return nil }
     defer { IOObjectRelease(iterator) }
 
-    var totalRead: UInt64 = 0
-    var totalWritten: UInt64 = 0
-    var foundStatistics = false
+    var counters: [UInt64: IOCounters] = [:]
+    var seenDevices: Set<UInt64> = []
+    defer {
+      physicalStorageDevices = physicalStorageDevices.filter { seenDevices.contains($0.key) }
+    }
     var service = IOIteratorNext(iterator)
-
     while service != 0 {
       defer {
         IOObjectRelease(service)
         service = IOIteratorNext(iterator)
       }
-
-      guard
+      var identifier: UInt64 = 0
+      guard IORegistryEntryGetRegistryEntryID(service, &identifier) == KERN_SUCCESS else {
+        continue
+      }
+      seenDevices.insert(identifier)
+      if physicalStorageDevices[identifier] == nil {
+        let characteristics =
+          IORegistryEntrySearchCFProperty(
+            service, kIOServicePlane, "Protocol Characteristics" as CFString,
+            kCFAllocatorDefault,
+            IOOptionBits(kIORegistryIterateRecursively | kIORegistryIterateParents)
+          ) as? [String: Any]
+        physicalStorageDevices[identifier] = isPhysicalStorageDevice(characteristics)
+      }
+      guard physicalStorageDevices[identifier] == true,
         let property = IORegistryEntryCreateCFProperty(
-          service,
-          "Statistics" as CFString,
-          kCFAllocatorDefault,
-          0
+          service, "Statistics" as CFString, kCFAllocatorDefault, 0
         )?.takeRetainedValue() as? [String: Any],
         let bytesRead = property["Bytes (Read)"] as? NSNumber,
         let bytesWritten = property["Bytes (Write)"] as? NSNumber
       else { continue }
-
-      totalRead &+= bytesRead.uint64Value
-      totalWritten &+= bytesWritten.uint64Value
-      foundStatistics = true
+      counters[identifier] = IOCounters(
+        first: bytesRead.uint64Value, second: bytesWritten.uint64Value)
     }
-
-    guard foundStatistics else { return nil }
-    return StorageBytes(read: totalRead, written: totalWritten)
+    return counters.isEmpty ? nil : counters
   }
 
   private func readCurrentInterfaces() -> Bool {
@@ -434,6 +364,9 @@ public final class SystemStatsSampler {
   }
 
   private func parseRouteMessages(length: Int) -> Bool {
+    guard let sampledInterfaceName else { return false }
+    let selectedIndex = if_nametoindex(sampledInterfaceName)
+    guard selectedIndex != 0 else { return false }
     var offset = 0
     while offset < length {
       guard length - offset >= 4 else { return false }
@@ -452,10 +385,10 @@ public final class SystemStatsSampler {
         let info = message.assumingMemoryBound(to: if_msghdr2.self).pointee
         let isLoopback = (info.ifm_flags & IFF_LOOPBACK) != 0
 
-        if !isLoopback {
-          currentInterfaces[info.ifm_index] = InterfaceBytes(
-            received: info.ifm_data.ifi_ibytes,
-            sent: info.ifm_data.ifi_obytes
+        if !isLoopback, UInt32(info.ifm_index) == selectedIndex {
+          // One routing layer only: never add a tunnel to its backing link.
+          currentInterfaces[sampledInterfaceName] = IOCounters(
+            first: info.ifm_data.ifi_ibytes, second: info.ifm_data.ifi_obytes
           )
         }
       }
@@ -489,9 +422,48 @@ public final class SystemStatsSampler {
   }
 }
 
-private struct InterfaceBytesPerSecond {
-  let received: Double
-  let sent: Double
+struct IOCounters: Equatable {
+  let first: UInt64
+  let second: UInt64
+}
+
+struct CounterRates: Equatable {
+  let first: Double
+  let second: Double
+}
+
+struct CounterRateSampler<Key: Hashable> {
+  private var previous: (values: [Key: IOCounters], time: Double)?
+
+  mutating func sample(_ current: [Key: IOCounters]?, at time: Double) -> CounterRates? {
+    guard let current, !current.isEmpty else {
+      previous = nil
+      return nil
+    }
+    defer { previous = (current, time) }
+    guard let previous, time > previous.time, time - previous.time <= 10 else { return nil }
+    var first = 0.0
+    var second = 0.0
+    var matched = false
+    for (identifier, value) in current {
+      guard let prior = previous.values[identifier],
+        value.first >= prior.first, value.second >= prior.second
+      else { continue }
+      first += Double(value.first - prior.first)
+      second += Double(value.second - prior.second)
+      matched = true
+    }
+    guard matched else { return nil }
+    return CounterRates(
+      first: first / (time - previous.time), second: second / (time - previous.time))
+  }
+}
+
+func isPhysicalStorageDevice(_ characteristics: [String: Any]?) -> Bool {
+  guard let interconnect = characteristics?["Physical Interconnect"] as? String,
+    let location = characteristics?["Physical Interconnect Location"] as? String
+  else { return false }
+  return interconnect != "Virtual Interface" && location != "File"
 }
 
 func tickDelta(from previous: UInt32, to current: UInt32) -> UInt64 {
