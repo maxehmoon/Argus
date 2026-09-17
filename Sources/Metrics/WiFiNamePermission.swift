@@ -43,30 +43,28 @@ final class WiFiNamePermission: NSObject, ObservableObject, CLLocationManagerDel
 }
 
 @MainActor
-struct WiFiNameSettingsSection: View {
+struct WiFiNameSettingsRow: View {
   @StateObject private var permission = WiFiNamePermission()
 
   var body: some View {
-    Section {
-      HStack {
-        Text("Wi-Fi network name")
-        Spacer()
-        Text(permission.isAuthorised ? "Allowed" : "Not allowed")
-          .foregroundStyle(.secondary)
+    LabeledContent("Wi-Fi name:") {
+      VStack(alignment: .leading, spacing: 8) {
+        Text(permission.isAuthorised ? "Access allowed" : "Permission required")
+        Text(
+          "macOS requires Location Services permission to show your Wi-Fi network name. Argus does not request or store your location."
+        )
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        Button(
+          permission.status == .notDetermined
+            ? "Allow Wi-Fi Name…" : "Open Location Services Settings…"
+        ) {
+          permission.request()
+        }
       }
-      Button(
-        permission.status == .notDetermined
-          ? "Allow Wi-Fi Name…" : "Open Location Services Settings…"
-      ) {
-        permission.request()
-      }
-    } header: {
-      Text("Wi-Fi")
-    } footer: {
-      Text(
-        "macOS requires Location Services permission to show your Wi-Fi name. Argus does not request or store your location. Other network readings work without this permission."
-      )
     }
+    .accessibilityElement(children: .contain)
     .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification))
     { _ in
       permission.refresh()
