@@ -359,9 +359,11 @@ enum BatteryReader {
     let voltage =
       positiveNumber(description[kIOPSVoltageKey])
       ?? hardware.voltageMillivolts
-    let currentMilliamps =
-      number(description[kIOPSCurrentKey])
-      ?? hardware.currentMilliamps
+    var currentMilliamps = number(description[kIOPSCurrentKey])
+    // IOPS can publish a placeholder zero while the battery sensor reports current.
+    if currentMilliamps == nil || currentMilliamps == 0 {
+      currentMilliamps = hardware.currentMilliamps ?? currentMilliamps
+    }
     let powerWatts = voltage.flatMap { voltage in
       currentMilliamps.map { current in
         abs(Double(voltage) * Double(current)) / 1_000_000

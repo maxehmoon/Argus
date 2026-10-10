@@ -119,12 +119,12 @@ struct MonitorAccuracyTests {
     #expect(try #require(BatteryReader.decode(values)).state == .onBattery)
   }
 
-  @Test func preservesZeroAndSignedBatteryCurrent() throws {
+  @Test func preservesSignedBatteryCurrent() throws {
     var values: [String: Any] = [
       kIOPSCurrentCapacityKey: 80, kIOPSMaxCapacityKey: 100, kIOPSVoltageKey: 12_000,
     ]
     #expect(try #require(BatteryReader.decode(values)).powerWatts == nil)
-    for current in [-500, 0, 500] {
+    for current in [-500, 500] {
       values[kIOPSCurrentKey] = current
       let stats = try #require(
         BatteryReader.decode(
@@ -132,6 +132,39 @@ struct MonitorAccuracyTests {
         ))
       #expect(stats.powerWatts == abs(Double(current)) * 0.012)
     }
+  }
+
+  @Test(arguments: [-4_039, 0, 4_039])
+  func usesHardwareCurrentWhenPowerSourceReportsZero(current: Int) throws {
+    let values: [String: Any] = [
+      kIOPSCurrentCapacityKey: 50, kIOPSMaxCapacityKey: 100, kIOPSCurrentKey: 0,
+      kIOPSPowerSourceStateKey: kIOPSACPowerValue, kIOPSIsChargingKey: current > 0,
+    ]
+    let stats = try #require(
+      BatteryReader.decode(
+        values,
+        hardware: BatteryHardwareDetails(voltageMillivolts: 12_440, currentMilliamps: current)
+      ))
+    let expectedWatts = abs(12_440 * Double(current)) / 1_000_000
+    #expect(stats.powerWatts == expectedWatts)
+  }
+
+  @Test func preservesZeroBatteryCurrentWithoutHardware() throws {
+    let values: [String: Any] = [
+      kIOPSCurrentCapacityKey: 80, kIOPSMaxCapacityKey: 100, kIOPSVoltageKey: 12_000,
+      kIOPSCurrentKey: 0,
+    ]
+    #expect(try #require(BatteryReader.decode(values)).powerWatts == 0)
+  }
+
+  @Test(arguments: [-500, 0, 500])
+  func usesHardwareCurrentWhenPowerSourceCurrentIsMissing(current: Int) throws {
+    let values: [String: Any] = [
+      kIOPSCurrentCapacityKey: 80, kIOPSMaxCapacityKey: 100, kIOPSVoltageKey: 12_000,
+    ]
+    let stats = try #require(
+      BatteryReader.decode(values, hardware: BatteryHardwareDetails(currentMilliamps: current)))
+    #expect(stats.powerWatts == abs(Double(current)) * 0.012)
   }
 
   @Test func excludesUnknownBatteryTimeSentinels() throws {
