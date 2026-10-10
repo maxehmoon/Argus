@@ -53,7 +53,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var historyPoints: [WidgetKind: [HistoryPoint]] = [:]
   private var iconCache: [String: NSImage] = [:]
   private var batteryStatusSymbolName: String?
-  private var networkStatusView: NetworkStatusView?
+  private var networkStatusRates: (received: String, sent: String)?
   private var cpuHardwareStats: CPUHardwareStats?
   private var latestSnapshot: StatsSnapshot?
   private var sampleOptions: SystemSampleOptions = []
@@ -162,7 +162,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       NSStatusBar.system.removeStatusItem(item)
     }
     if kind == .network {
-      networkStatusView = nil
+      networkStatusRates = nil
     } else if kind == .battery {
       batteryStatusSymbolName = nil
     }
@@ -198,7 +198,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     openMenus.removeAll(keepingCapacity: false)
     historyPoints.removeAll(keepingCapacity: false)
     iconCache.removeAll(keepingCapacity: false)
-    networkStatusView = nil
+    networkStatusRates = nil
     latestSnapshot = nil
     consecutiveHighCPUSamples = 0
     isCPUHighlighted = false
@@ -266,19 +266,16 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private func makeStatusItem(for kind: WidgetKind) -> NSStatusItem {
     let length =
       kind == .network
-      ? NetworkStatusView.preferredWidth
+      ? NetworkStatusImage.preferredWidth
       : NSStatusItem.variableLength
     let item = NSStatusBar.system.statusItem(withLength: length)
     guard let button = item.button else { return item }
 
     if kind == .network {
-      button.image = nil
       button.title = ""
-
-      let statusView = NetworkStatusView(frame: button.bounds)
-      statusView.autoresizingMask = [.width, .height]
-      button.addSubview(statusView)
-      networkStatusView = statusView
+      button.imagePosition = .imageOnly
+      button.imageScaling = .scaleNone
+      button.image = NetworkStatusImage.make(received: "–", sent: "–")
     } else {
       let image = NSImage(
         systemSymbolName: kind.symbolName,
@@ -1380,7 +1377,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       setTitle(
         StatsFormatter.percentage(snapshot.cpuPercent),
         for: .cpu,
-        color: isCPUHighlighted ? .systemOrange : .controlTextColor
+        highlighted: isCPUHighlighted
       )
     }
     if preferences.isEnabled(.memory) {
@@ -1505,24 +1502,18 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private func setTitle(
     _ title: String,
     for kind: WidgetKind,
-    color: NSColor = .controlTextColor
+    highlighted: Bool = false
   ) {
     guard let button = statusItems[kind]?.button else { return }
-    let attributes: [NSAttributedString.Key: Any] = [
-      .font: button.font ?? NSFont.systemFont(ofSize: NSFont.systemFontSize),
-      .foregroundColor: color,
-    ]
-    if button.attributedTitle.string != title
-      || button.attributedTitle.attribute(
-        .foregroundColor,
-        at: 0,
-        effectiveRange: nil
-      ) as? NSColor != color
-    {
-      button.attributedTitle = NSAttributedString(
-        string: title,
-        attributes: attributes
-      )
+    let font = NSFont.monospacedDigitSystemFont(
+      ofSize: NSFont.systemFontSize,
+      weight: highlighted ? .semibold : .regular
+    )
+    if button.font != font {
+      button.font = font
+    }
+    if button.title != title {
+      button.title = title
     }
     button.setAccessibilityValue(title)
   }
@@ -1540,13 +1531,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   private func setNetworkRates(received: Double?, sent: Double?) {
-    networkStatusView?.update(
-      received: StatsFormatter.rate(received),
-      sent: StatsFormatter.rate(sent)
-    )
-    statusItems[.network]?.button?.setAccessibilityValue(
-      "Received \(StatsFormatter.rate(received)), sent \(StatsFormatter.rate(sent))"
-    )
+    guard let button = statusItems[.network]?.button else { return }
+    let receivedText = StatsFormatter.rate(received)
+    let sentText = StatsFormatter.rate(sent)
+    if networkStatusRates?.received != receivedText || networkStatusRates?.sent != sentText {
+      button.image = NetworkStatusImage.make(received: receivedText, sent: sentText)
+      networkStatusRates = (receivedText, sentText)
+    }
+    button.setAccessibilityValue("Received \(receivedText), sent \(sentText)")
   }
 
   private func updateBatteryStatusIcon(for battery: BatteryStats) {

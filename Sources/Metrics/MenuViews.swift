@@ -562,7 +562,7 @@ final class StorageCapacityView: NSView {
 }
 
 @MainActor
-final class NetworkStatusView: NSView {
+enum NetworkStatusImage {
   static let preferredWidth: CGFloat = 77
 
   private static let font = NSFont.monospacedDigitSystemFont(
@@ -575,86 +575,37 @@ final class NetworkStatusView: NSView {
   )
   private static let lineHeight: CGFloat = 10.5
 
-  private var received = "–"
-  private var sent = "–"
-
-  override var isFlipped: Bool { true }
-
-  override func hitTest(_ point: NSPoint) -> NSView? {
-    nil
+  static func make(received: String, sent: String) -> NSImage {
+    let image = NSImage(
+      size: NSSize(width: 69, height: lineHeight * 2),
+      flipped: true
+    ) { bounds in
+      for (index, line) in [("↑", sent), ("↓", received)].enumerated() {
+        let y = CGFloat(index) * lineHeight
+        draw(
+          line.0,
+          in: NSRect(x: 0, y: y, width: 8, height: lineHeight),
+          alignment: .center,
+          font: arrowFont
+        )
+        draw(
+          line.1,
+          in: NSRect(x: 12, y: y, width: bounds.width - 12, height: lineHeight),
+          alignment: .right,
+          font: font
+        )
+      }
+      return true
+    }
+    // AppKit styles the entire readout, including text, on each display.
+    image.isTemplate = true
+    return image
   }
 
-  override func draw(_ dirtyRect: NSRect) {
-    super.draw(dirtyRect)
-
-    let contentHeight = Self.lineHeight * 2
-    let originY = floor((bounds.height - contentHeight) / 2)
-    let contentWidth: CGFloat = 69
-    let originX = floor((bounds.width - contentWidth) / 2)
-
-    drawLine(
-      arrow: "↑",
-      arrowColor: .systemOrange,
-      value: sent,
-      origin: NSPoint(x: originX, y: originY),
-      width: contentWidth
-    )
-    drawLine(
-      arrow: "↓",
-      arrowColor: .systemBlue,
-      value: received,
-      origin: NSPoint(x: originX, y: originY + Self.lineHeight),
-      width: contentWidth
-    )
-  }
-
-  func update(received: String, sent: String) {
-    guard self.received != received || self.sent != sent else { return }
-    self.received = received
-    self.sent = sent
-    needsDisplay = true
-  }
-
-  private func drawLine(
-    arrow: String,
-    arrowColor: NSColor,
-    value: String,
-    origin: NSPoint,
-    width: CGFloat
-  ) {
-    let arrowWidth: CGFloat = 8
-    let gap: CGFloat = 4
-    draw(
-      arrow,
-      in: NSRect(
-        x: origin.x,
-        y: origin.y,
-        width: arrowWidth,
-        height: Self.lineHeight
-      ),
-      alignment: .center,
-      color: arrowColor,
-      font: Self.arrowFont
-    )
-    draw(
-      value,
-      in: NSRect(
-        x: origin.x + arrowWidth + gap,
-        y: origin.y,
-        width: width - arrowWidth - gap,
-        height: Self.lineHeight
-      ),
-      alignment: .right,
-      color: .controlTextColor,
-      font: Self.font
-    )
-  }
-
-  private func draw(
+  private static func draw(
     _ text: String,
     in rect: NSRect,
     alignment: NSTextAlignment,
-    color: NSColor,
     font: NSFont
   ) {
     let paragraphStyle = NSMutableParagraphStyle()
@@ -664,7 +615,7 @@ final class NetworkStatusView: NSView {
       string: text,
       attributes: [
         .font: font,
-        .foregroundColor: color,
+        .foregroundColor: NSColor.black,
         .paragraphStyle: paragraphStyle,
       ]
     ).draw(
@@ -672,7 +623,6 @@ final class NetworkStatusView: NSView {
       options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
     )
   }
-
 }
 
 private enum NumericTextStyle: Equatable {
