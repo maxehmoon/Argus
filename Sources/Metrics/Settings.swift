@@ -8,35 +8,31 @@ final class SettingsWindowController: NSWindowController {
     preferences: WidgetPreferences,
     checkForUpdates: @escaping @MainActor () -> Void
   ) {
-    let hostingController = NSHostingController(
-      rootView: SettingsRootView(
-        preferences: preferences,
-        checkForUpdates: checkForUpdates
-      )
+    let tabs = SettingsTabViewController(
+      preferences: preferences,
+      checkForUpdates: checkForUpdates
     )
     let window = NSWindow(
-      contentRect: NSRect(x: 0, y: 0, width: 640, height: 480),
-      styleMask: [.titled, .closable, .resizable, .fullSizeContentView],
+      contentRect: NSRect(origin: .zero, size: SettingsLayout.contentSize),
+      styleMask: [.titled, .closable],
       backing: .buffered,
       defer: false
     )
     window.title = "Argus Settings"
-    window.titleVisibility = .hidden
-    window.titlebarAppearsTransparent = true
-    window.toolbarStyle = .unified
-    window.contentViewController = hostingController
-    window.minSize = NSSize(width: 600, height: 420)
+    window.toolbarStyle = .preference
+    window.contentViewController = tabs
     window.isReleasedWhenClosed = false
+    window.tabbingMode = .disallowed
     window.collectionBehavior = [.moveToActiveSpace]
-    window.standardWindowButton(.miniaturizeButton)?.isEnabled = false
-    window.standardWindowButton(.zoomButton)?.isEnabled = false
-    if !window.setFrameUsingName("ArgusSettingsWindowMinimal") {
+    let restoredFrame = window.setFrameUsingName("ArgusSettingsWindow", force: true)
+    window.setContentSize(SettingsLayout.contentSize)
+    if !restoredFrame {
       window.center()
     }
 
     super.init(window: window)
     shouldCascadeWindows = false
-    window.setFrameAutosaveName("ArgusSettingsWindowMinimal")
+    window.setFrameAutosaveName("ArgusSettingsWindow")
   }
 
   @available(*, unavailable)
@@ -55,124 +51,87 @@ final class SettingsWindowController: NSWindowController {
   }
 }
 
-private enum SettingsPage: String, CaseIterable, Identifiable {
-  case widgets
-  case general
-  case about
+private enum SettingsLayout {
+  static let contentSize = NSSize(width: 560, height: 380)
+}
 
-  var id: String { rawValue }
+private enum SettingsPage: String {
+  case general
+  case widgets
+  case network
+  case about
 
   var title: String {
     switch self {
-    case .widgets: "Widgets"
     case .general: "General"
+    case .widgets: "Menu Bar"
+    case .network: "Network"
     case .about: "About"
     }
   }
 
   var symbolName: String {
     switch self {
-    case .widgets: "rectangle.3.group"
     case .general: "gearshape"
+    case .widgets: "menubar.rectangle"
+    case .network: "network"
     case .about: "info.circle"
     }
   }
 }
 
 @MainActor
-private struct SettingsRootView: View {
-  @ObservedObject var preferences: WidgetPreferences
-  let checkForUpdates: @MainActor () -> Void
-  @AppStorage("settings.selectedPage") private var selectedPage =
-    SettingsPage.widgets.rawValue
+private final class SettingsTabViewController: NSTabViewController {
+  init(preferences: WidgetPreferences, checkForUpdates: @escaping @MainActor () -> Void) {
+    let savedPage = UserDefaults.standard.string(forKey: "settings.selectedPage")
+    super.init(nibName: nil, bundle: nil)
+    tabStyle = .toolbar
+    transitionOptions = []
+    canPropagateSelectedChildViewControllerTitle = false
 
-  var body: some View {
-    NavigationSplitView {
-      VStack(spacing: 0) {
-        SettingsSidebarHeader()
-
-        List(SettingsPage.allCases, selection: $selectedPage) { page in
-          SettingsSidebarRow(page: page)
-            .tag(page.rawValue)
-        }
-        .listStyle(.sidebar)
-        .environment(\.defaultMinListRowHeight, 30)
-      }
-      .navigationTitle("Argus")
-      .navigationSplitViewColumnWidth(min: 164, ideal: 176, max: 190)
-    } detail: {
-      VStack(alignment: .leading, spacing: 0) {
-        Text(currentPage.title)
-          .font(.title2.weight(.semibold))
-          .padding(.horizontal, 20)
-          .padding(.top, 18)
-          .padding(.bottom, 8)
-
-        detail
-      }
-      .frame(maxWidth: .infinity, maxHeight: .infinity)
-      .background(Color(nsColor: .windowBackgroundColor))
-    }
-    .navigationSplitViewStyle(.balanced)
-    .frame(minWidth: 600, minHeight: 420)
+    addPane(.general, content: GeneralSettingsPage(preferences: preferences))
+    addPane(.widgets, content: WidgetsSettingsPage(preferences: preferences))
+    addPane(.network, content: NetworkSettingsPage(preferences: preferences))
+    addPane(.about, content: AboutSettingsPage(checkForUpdates: checkForUpdates))
+    selectedTabViewItemIndex =
+      tabViewItems.firstIndex { $0.identifier as? String == savedPage } ?? 0
   }
 
-  private var currentPage: SettingsPage {
-    SettingsPage(rawValue: selectedPage) ?? .widgets
+  @available(*, unavailable)
+  required init?(coder: NSCoder) {
+    fatalError("init(coder:) has not been implemented")
   }
 
-  @ViewBuilder
-  private var detail: some View {
-    switch currentPage {
-    case .widgets:
-      WidgetsSettingsPage(preferences: preferences)
-    case .general:
-      GeneralSettingsPage(preferences: preferences)
-    case .about:
-      AboutSettingsPage(checkForUpdates: checkForUpdates)
-    }
+  private func addPane<Content: View>(_ page: SettingsPage, content: Content) {
+    let controller = NSHostingController(
+      rootView:
+        content
+        .padding(28)
+        .frame(width: SettingsLayout.contentSize.width, height: SettingsLayout.contentSize.height)
+    )
+    controller.title = page.title
+    let item = NSTabViewItem(viewController: controller)
+    item.identifier = page.rawValue
+    item.label = page.title
+    item.image = NSImage(systemSymbolName: page.symbolName, accessibilityDescription: page.title)
+    addTabViewItem(item)
   }
-}
 
-@MainActor
-private struct SettingsSidebarHeader: View {
-  var body: some View {
-    HStack(spacing: 10) {
-      Image(nsImage: NSApp.applicationIconImage)
-        .resizable()
-        .interpolation(.high)
-        .frame(width: 30, height: 30)
-
-      VStack(alignment: .leading, spacing: 1) {
-        Text("Argus")
-          .font(.headline)
-        Text(applicationVersion)
-          .font(.caption)
-          .foregroundStyle(.secondary)
-      }
-
-      Spacer(minLength: 0)
-    }
-    .padding(.horizontal, 12)
-    .padding(.top, 10)
-    .padding(.bottom, 8)
-    .accessibilityElement(children: .combine)
+  override func viewWillAppear() {
+    super.viewWillAppear()
+    view.window?.toolbar?.allowsUserCustomization = false
+    view.window?.toolbar?.displayMode = .iconAndLabel
   }
-}
 
-private struct SettingsSidebarRow: View {
-  let page: SettingsPage
+  override func toolbarDefaultItemIdentifiers(_ toolbar: NSToolbar) -> [NSToolbarItem.Identifier] {
+    [.flexibleSpace] + super.toolbarDefaultItemIdentifiers(toolbar) + [.flexibleSpace]
+  }
 
-  var body: some View {
-    HStack(spacing: 8) {
-      Image(systemName: page.symbolName)
-        .font(.system(size: 13))
-        .foregroundStyle(.secondary)
-        .frame(width: 18)
-
-      Text(page.title)
+  override func tabView(_ tabView: NSTabView, didSelect tabViewItem: NSTabViewItem?) {
+    super.tabView(tabView, didSelect: tabViewItem)
+    if let page = tabViewItem?.identifier as? String {
+      UserDefaults.standard.set(page, forKey: "settings.selectedPage")
     }
-    .contentShape(Rectangle())
   }
 }
 
@@ -182,13 +141,19 @@ private struct WidgetsSettingsPage: View {
 
   var body: some View {
     Form {
-      Section {
-        ForEach(WidgetKind.allCases) { widget in
-          WidgetToggleRow(widget: widget, preferences: preferences)
+      LabeledContent("Show in menu bar:") {
+        VStack(alignment: .leading, spacing: 14) {
+          ForEach(WidgetKind.allCases) { widget in
+            WidgetToggleRow(widget: widget, preferences: preferences)
+          }
+          Text("Keep at least one widget enabled.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
       }
     }
-    .formStyle(.grouped)
+    .formStyle(.columns)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
   }
 }
 
@@ -198,23 +163,20 @@ private struct WidgetToggleRow: View {
   @ObservedObject var preferences: WidgetPreferences
 
   var body: some View {
-    Toggle(isOn: binding) {
-      HStack(spacing: 11) {
-        Image(systemName: widget.symbolName)
-          .font(.system(size: 15, weight: .medium))
-          .foregroundStyle(.secondary)
-          .frame(width: 24)
-
-        Text(widget.title)
-      }
-      .padding(.vertical, 3)
+    VStack(alignment: .leading, spacing: 3) {
+      Toggle(widget.title, isOn: binding)
+        .toggleStyle(.checkbox)
+        .disabled(
+          (!widget.isAvailable && !preferences.isEnabled(widget))
+            || !preferences.canDisable(widget)
+        )
+        .help(widget.description)
+      Text(widget.isAvailable ? widget.description : "No internal battery on this Mac.")
+        .font(.caption)
+        .foregroundStyle(.secondary)
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(.leading, 20)
     }
-    .toggleStyle(.switch)
-    .disabled(
-      (!widget.isAvailable && !preferences.isEnabled(widget))
-        || !preferences.canDisable(widget)
-    )
-    .accessibilityHint(widget.description)
   }
 
   private var binding: Binding<Bool> {
@@ -231,45 +193,47 @@ private struct GeneralSettingsPage: View {
 
   var body: some View {
     Form {
-      StartAtLoginSettingsSection()
+      StartAtLoginSettingsRow()
 
-      Section {
-        Picker("Background refresh", selection: refreshRateBinding) {
-          ForEach(RefreshRate.allCases) { rate in
-            Text(rate.title).tag(rate)
+      LabeledContent("Refresh interval:") {
+        VStack(alignment: .leading, spacing: 6) {
+          Picker("Refresh interval", selection: refreshRateBinding) {
+            ForEach(RefreshRate.allCases) { rate in
+              Text(rate.title).tag(rate)
+            }
           }
+          .labelsHidden()
+          .frame(width: 170, alignment: .leading)
+          Text("Less frequent updates reduce background activity.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
         }
+        .padding(.vertical, 8)
+      }
 
+      LabeledContent("Graph history:") {
         Picker("Graph history", selection: graphPeriodBinding) {
           ForEach(GraphPeriod.allCases) { period in
             Text(period.title).tag(period)
           }
         }
-      } header: {
-        Text("Updates")
+        .labelsHidden()
+        .frame(width: 170, alignment: .leading)
       }
 
-      Section {
-        Toggle("Animate popup changes", isOn: animateChangesBinding)
-          .toggleStyle(.switch)
-      } header: {
-        Text("Motion")
-      }
-
-      WiFiNameSettingsSection()
-
-      Section {
-        Toggle("Show public IP and country", isOn: showPublicIPBinding)
-          .toggleStyle(.switch)
-      } header: {
-        Text("Network")
-      } footer: {
-        Text(
-          "When enabled, Argus contacts ipwho.is. country.is and ipify.org are used as fallbacks."
-        )
+      LabeledContent("Appearance:") {
+        VStack(alignment: .leading, spacing: 6) {
+          Toggle("Animate changes in panels", isOn: animateChangesBinding)
+            .toggleStyle(.checkbox)
+          Text("Animations also follow the macOS Reduce Motion setting.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.top, 12)
       }
     }
-    .formStyle(.grouped)
+    .formStyle(.columns)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
   }
 
   private var refreshRateBinding: Binding<RefreshRate> {
@@ -292,44 +256,70 @@ private struct GeneralSettingsPage: View {
       set: { preferences.setGraphPeriod($0) }
     )
   }
+}
 
-  private var showPublicIPBinding: Binding<Bool> {
-    Binding(
-      get: { preferences.showPublicIP },
-      set: { preferences.setShowPublicIP($0) }
-    )
+@MainActor
+private struct NetworkSettingsPage: View {
+  @ObservedObject var preferences: WidgetPreferences
+
+  var body: some View {
+    Form {
+      LabeledContent("Public IP:") {
+        VStack(alignment: .leading, spacing: 8) {
+          Toggle(
+            "Show IP address and country",
+            isOn: Binding(
+              get: { preferences.showPublicIP },
+              set: { preferences.setShowPublicIP($0) }
+            )
+          )
+          .toggleStyle(.checkbox)
+          Text("Uses ipwho.is, with country.is and ipify.org as fallbacks.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(.bottom, 20)
+      }
+      .accessibilityElement(children: .contain)
+      WiFiNameSettingsRow()
+    }
+    .formStyle(.columns)
+    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
   }
 }
 
 @MainActor
-private struct StartAtLoginSettingsSection: View {
+private struct StartAtLoginSettingsRow: View {
   @State private var status: SMAppService.Status = .notRegistered
   @State private var errorMessage: String?
 
   var body: some View {
-    Section {
-      Toggle(
-        "Start at login",
-        isOn: Binding(
-          get: { status == .enabled },
-          set: { setEnabled($0) }
+    LabeledContent("Startup:") {
+      VStack(alignment: .leading, spacing: 8) {
+        Toggle(
+          "Start Argus at login",
+          isOn: Binding(
+            get: { status == .enabled },
+            set: { setEnabled($0) }
+          )
         )
-      )
-      .toggleStyle(.switch)
+        .toggleStyle(.checkbox)
 
-      if status == .requiresApproval {
-        Button("Open Login Items Settings…") {
-          SMAppService.openSystemSettingsLoginItems()
+        if status == .requiresApproval {
+          Text("Allow Argus in Login Items to start automatically.")
+            .font(.caption)
+            .foregroundStyle(.secondary)
+          Button("Open Login Items Settings…") {
+            SMAppService.openSystemSettingsLoginItems()
+          }
         }
-      }
-    } header: {
-      Text("Startup")
-    } footer: {
-      if status == .requiresApproval {
-        Text("Allow Argus in System Settings to start automatically when you log in.")
-      } else if let errorMessage {
-        Text("Couldn’t update start at login: \(errorMessage)")
-          .foregroundStyle(.red)
+        if let errorMessage {
+          Text("Couldn’t update start at login: \(errorMessage)")
+            .font(.caption)
+            .foregroundStyle(.red)
+            .fixedSize(horizontal: false, vertical: true)
+        }
       }
     }
     .onAppear { refreshStatus() }
@@ -370,25 +360,25 @@ private struct AboutSettingsPage: View {
   let checkForUpdates: @MainActor () -> Void
 
   var body: some View {
-    VStack(spacing: 14) {
+    VStack(spacing: 10) {
       Image(nsImage: NSApp.applicationIconImage)
         .resizable()
         .interpolation(.high)
-        .frame(width: 80, height: 80)
+        .frame(width: 72, height: 72)
 
       Text("Argus")
         .font(.title2.weight(.semibold))
       Text(applicationVersion)
-        .foregroundStyle(.secondary)
-      Text("Native. Lightweight. Built for macOS.")
         .font(.callout)
         .foregroundStyle(.secondary)
+      Text("A lightweight system monitor for your menu bar.")
+        .foregroundStyle(.secondary)
+        .padding(.top, 6)
 
       Button("Check for Updates…", action: checkForUpdates)
-        .padding(.top, 4)
+        .padding(.top, 10)
     }
     .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .padding(.bottom, 70)
   }
 }
 
