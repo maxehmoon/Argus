@@ -34,18 +34,39 @@ can keep all five in the menu bar or switch off anything you do not care about.
 | --- | --- | --- |
 | **CPU** | Overall usage | History, temperature, processor speed, load averages, uptime, and top applications |
 | **Memory** | Memory usage | History, pressure, app/wired/compressed/free memory, swap, and top applications |
-| **Network** | Received and sent rates | Traffic history, connection and interface details, local/public IP, totals, and top applications |
-| **Storage** | Read and write activity | Activity history, volume usage and capacity, and top applications |
-| **Battery** | Charge and charging state | Charge history, time remaining, health, power information, and top energy users |
+| **Network** | Primary connection received and sent rates | Traffic history, connection and interface details, IPv4/IPv6 addresses, public IP, totals, and top applications |
+| **Storage** | System-volume capacity used | Physical-disk activity history, volume usage and capacity, and application disk I/O |
+| **Battery** | Charge and external-power state | Time remaining, health, battery power, and estimated CPU power by application |
 
-Every widget includes a live history graph. The graph can cover the last 30
+CPU, memory, network and storage include a live history graph. The graph can cover the last 30
 seconds, 1 minute, 3 minutes, or 5 minutes, and you can hover over it to inspect
-a particular point in time. Application lists show up to 15 of the processes
-using that resource most heavily.
+a particular point in time. Missing readings and pauses leave gaps; a new graph
+starts at its first sample. Application lists group helper processes by their
+outer application bundle and show up to 15 entries.
+
+CPU application percentages use the whole machine's capacity, including user
+and kernel work. Network graphs and totals cover one primary interface (IPv4's
+primary route, or IPv6's when IPv4 has none), so a VPN tunnel and its backing
+link are never added together. Totals are that interface's counters since it
+was created or reset. Application network rankings cover external connections
+across interfaces and need not sum to the primary connection's rate.
+
+Disk graphs add activity from physical internal and external devices, excluding
+disk images. Application disk I/O uses separate process accounting; it need not
+sum to physical throughput. New devices need two readings before contributing.
+Unavailable readings appear as a dash, not zero.
+
+Temperature and frequency depend on private hardware telemetry and may be
+unavailable, particularly on Intel Macs. Temperature is the highest valid
+candidate CPU sensor reading; frequency is weighted by active CPU residency.
+Application power estimates cover CPU energy only, not GPU or total battery
+drain, and are unavailable when macOS supplies no energy counters. Battery
+power is measured separately from voltage and signed current.
 
 Open Settings with <kbd>⌘</kbd><kbd>,</kbd> to choose your widgets, refresh rate,
-graph duration, animation preferences, and whether Argus should look up your
-public IP and country.
+graph duration, animation preferences, whether Argus should start at login,
+and whether it should look up your public IP and country.
+Settings also includes an optional permission action to display your Wi-Fi name.
 
 ## Built to stay out of the way
 
@@ -63,18 +84,25 @@ It also tries not to collect data simply because it can:
 - CPU and memory readings come from native Mach and `libproc` counters.
 - There is no persistent helper process or continuously running worker queue.
 
-Open panels update once per second. Their animations stop when they close, and
-all motion respects the macOS Reduce Motion setting.
+Open panels target one update per second. Slow collectors can take longer;
+failed collectors are paced too. Network process samples have a four-second
+timeout and are cancelled when their panel closes. Animations stop when panels
+close and respect both the app's animation preference and macOS Reduce Motion.
 
 ## Privacy
 
 Argus has no analytics, advertising, tracking, or user-data collection. System
 statistics stay on your Mac, and preferences are stored locally.
 
-Public IP and country lookup is the one optional network request. When enabled,
+Public IP and country lookup makes an optional network request. When enabled,
 Argus contacts `ipwho.is`, with `country.is` and `ipify.org` as fallbacks. You can
 turn it off in Settings. Per-application traffic is read locally through macOS's
-`nettop` utility.
+`nettop` utility. Sparkle also checks the project's update feed for app updates.
+
+macOS requires Location Services permission to reveal a Wi-Fi network's name.
+Argus requests this only when you choose **Allow Wi-Fi Name…** in Settings.
+It does not request location updates or store coordinates. Network rates and
+other readings work without this permission.
 
 ## Build it yourself
 

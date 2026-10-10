@@ -10,8 +10,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
 
   private struct HistoryPoint {
     let capturedAt: ContinuousClock.Instant
-    let primary: Double
+    let primary: Double?
     let secondary: Double?
+    let samplingInterval: Double
+    let startsSegment: Bool
   }
 
   private struct MenuPresentation {
@@ -59,7 +61,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private var isCPUHighlighted = false
   private var publicIPValue = "Checking…"
   private var publicIPAddress: String?
-  private var receivedInitialNetworkPath = false
 
   init(
     preferences: WidgetPreferences,
@@ -79,6 +80,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     reconcileWidgetVisibility()
     startPowerSourceMonitoring()
     startNetworkMonitoring()
+    NSWorkspace.shared.notificationCenter.addObserver(
+      self, selector: #selector(updateMotion),
+      name: NSWorkspace.accessibilityDisplayOptionsDidChangeNotification, object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self, selector: #selector(wifiPermissionDidChange), name: WiFiNamePermission.didChange,
+      object: nil
+    )
 
     // Seed rate counters once. The first visible sample arrives one second later.
     _ = sampler.sample(options: sampleOptions)
@@ -93,6 +102,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     preferences.onGraphPeriodChange = { [weak self] _ in
       self?.graphPeriodDidChange()
     }
+    preferences.onAnimateChangesChange = { [weak self] _ in self?.updateMotion() }
     preferences.onShowPublicIPChange = { [weak self] isEnabled in
       self?.publicIPPreferenceDidChange(isEnabled)
     }
@@ -163,10 +173,13 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     timer = nil
     stopPowerSourceMonitoring()
     stopNetworkMonitoring()
+    NSWorkspace.shared.notificationCenter.removeObserver(self)
+    NotificationCenter.default.removeObserver(self)
     preferences.onEnabledWidgetsChange = nil
     preferences.onRefreshRateChange = nil
     preferences.onGraphPeriodChange = nil
     preferences.onShowPublicIPChange = nil
+    preferences.onAnimateChangesChange = nil
 
     for task in detailTasks.values {
       task.cancel()
@@ -192,16 +205,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   }
 
   func menuWillOpen(_ menu: NSMenu) {
-    guard
-      let kind = menuKinds[ObjectIdentifier(menu)],
-      let presentation = presentations[kind]
-    else { return }
+    guard let kind = menuKinds[ObjectIdentifier(menu)], presentations[kind] != nil else { return }
     openMenus.insert(kind)
     updateHistoryView(for: kind)
-    presentation.history?.setAnimationActive(preferences.animateChanges)
-    presentation.summary.setAnimationsActive(preferences.animateChanges)
-    presentation.detailsList?.setLoadingEffectsActive(true)
-    presentation.list.setAnimationsActive(preferences.animateChanges)
+    updateMotion()
     if kind == .cpu {
       cpuHardwareStats = nil
     }
@@ -214,6 +221,28 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       refreshPublicIP()
     }
     loadApplicationDetails(for: kind)
+  }
+
+  @objc private func updateMotion() {
+    let enabled =
+      preferences.animateChanges && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+    for (kind, presentation) in presentations {
+      let active = enabled && openMenus.contains(kind)
+      presentation.history?.setAnimationActive(active)
+      presentation.summary.setAnimationsActive(active)
+      presentation.detailsList?.setLoadingEffectsActive(active)
+      presentation.list.setAnimationsActive(active)
+    }
+  }
+
+  @objc private func wifiPermissionDidChange() {
+    sampler.invalidateNetworkIdentityCache()
+    if preferences.isEnabled(.network) {
+      refresh()
+      if openMenus.contains(.network), let snapshot = latestSnapshot {
+        showWidgetDetails(for: .network, snapshot: snapshot)
+      }
+    }
   }
 
   func menuDidClose(_ menu: NSMenu) {
@@ -356,7 +385,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         switch kind {
         case .cpu: 4
         case .memory: 6
-        case .network: 9
+        case .network: 10
         case .battery: 6
         default: 3
         }
@@ -458,9 +487,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       )
     case .memory:
       presentation.summary.update(
-        primary: "\(StatsFormatter.gigabytes(snapshot.memoryUsed)) GB",
+        primary: snapshot.memoryUsed.map { "\(StatsFormatter.gigabytes($0)) GB" } ?? "–",
         secondary: "",
-        primaryMetric: Double(snapshot.memoryUsed)
+        primaryMetric: snapshot.memoryUsed.map(Double.init)
       )
     case .network:
       presentation.summary.update(
@@ -523,6 +552,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         openMenus.contains(kind),
         detailGenerations[kind] == generation
       {
+        let iterationStart = ContinuousClock.now
         switch kind {
         case .cpu:
           async let hardwareSample = cpuHardwareSampler.sample()
@@ -549,11 +579,6 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           else { break }
           sampleSystemStats(forOpenMenu: kind)
           showMemoryApplications(usages)
-          do {
-            try await Task.sleep(for: .seconds(1))
-          } catch {
-            break
-          }
         case .network:
           let usages = await networkProcessSampler.topApplications(
             limit: Self.applicationLimit
@@ -588,6 +613,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           sampleSystemStats(forOpenMenu: kind)
           showStorageApplications(usages)
         }
+        do {
+          try await ContinuousClock().sleep(until: iterationStart.advanced(by: .seconds(1)))
+        } catch {
+          break
+        }
       }
 
       if detailGenerations[kind] == generation {
@@ -596,10 +626,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
   }
 
-  private func showCPUApplications(_ usages: [AppCPUUsage]) {
+  private func showCPUApplications(_ usages: [AppCPUUsage]?) {
     guard let presentation = presentations[.cpu] else { return }
     let list = presentation.list
-    presentation.section.update(title: "CPU Sources")
+    guard let usages else {
+      showEmptyState("Application CPU data unavailable", in: list)
+      return
+    }
+    presentation.section.update(title: "Top Applications")
     let processorCount = Double(max(1, ProcessInfo.processInfo.activeProcessorCount))
     let applicationRows = usages.map { usage in
       let systemWidePercent = usage.percent / processorCount
@@ -614,42 +648,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         accessibilityLabel: "\(usage.name), system-wide CPU usage"
       )
     }
-    var rows: [ResourceListItem] = []
-    if let breakdown = latestSnapshot?.cpuBreakdown {
-      let listedUserPercent = usages.reduce(0) {
-        $0 + $1.percent / processorCount
-      }
-      if breakdown.systemPercent >= 0.05 {
-        rows.append(
-          ResourceListItem(
-            identifier: "cpu:system",
-            name: "System & Kernel",
-            value: String(format: "%.1f%%", breakdown.systemPercent),
-            image: NSImage(
-              systemSymbolName: "gearshape.2",
-              accessibilityDescription: nil
-            ),
-            accessibilityLabel: "System and kernel CPU usage"
-          )
-        )
-      }
-      let otherPercent = max(0, breakdown.userPercent - listedUserPercent)
-      if otherPercent >= 0.05 {
-        rows.append(
-          ResourceListItem(
-            identifier: "cpu:other",
-            name: "Other Processes",
-            value: String(format: "%.1f%%", otherPercent),
-            image: NSImage(
-              systemSymbolName: "ellipsis.circle",
-              accessibilityDescription: nil
-            ),
-            accessibilityLabel: "CPU usage from other processes"
-          )
-        )
-      }
-    }
-    rows.append(contentsOf: applicationRows)
+    let rows = applicationRows
     guard !rows.isEmpty else {
       showEmptyState("No active CPU sources found", in: list)
       return
@@ -657,8 +656,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     list.update(Array(rows.prefix(Self.applicationLimit)))
   }
 
-  private func showMemoryApplications(_ usages: [AppMemoryUsage]) {
+  private func showMemoryApplications(_ usages: [AppMemoryUsage]?) {
     guard let list = presentations[.memory]?.list else { return }
+    guard let usages else {
+      showEmptyState("Application memory data unavailable", in: list)
+      return
+    }
     guard !usages.isEmpty else {
       showEmptyState("No application memory data available", in: list)
       return
@@ -680,8 +683,12 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     )
   }
 
-  private func showNetworkApplications(_ usages: [AppNetworkUsage]) {
+  private func showNetworkApplications(_ usages: [AppNetworkUsage]?) {
     guard let list = presentations[.network]?.list else { return }
+    guard let usages else {
+      showEmptyState("Application network data unavailable", in: list)
+      return
+    }
     guard !usages.isEmpty else {
       showEmptyState("No external network activity in this sample", in: list)
       return
@@ -709,10 +716,14 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     )
   }
 
-  private func showBatteryEnergyApplications(_ usages: [AppEnergyUsage]) {
+  private func showBatteryEnergyApplications(_ usages: [AppEnergyUsage]?) {
     guard let list = presentations[.battery]?.list else { return }
+    guard let usages else {
+      showEmptyState("CPU power estimates unavailable", in: list)
+      return
+    }
     guard !usages.isEmpty else {
-      showEmptyState("No measurable application energy use", in: list)
+      showEmptyState("No measurable application CPU power", in: list)
       return
     }
 
@@ -727,16 +738,20 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           value: formattedPower(usage.watts),
           image: icon(for: usage.bundlePath),
           accessibilityLabel:
-            "\(usage.name), estimated power \(formattedPower(usage.watts))"
+            "\(usage.name), estimated CPU power \(formattedPower(usage.watts))"
         )
       }
     )
   }
 
-  private func showStorageApplications(_ usages: [AppStorageUsage]) {
+  private func showStorageApplications(_ usages: [AppStorageUsage]?) {
     guard let presentation = presentations[.storage] else { return }
     let list = presentation.list
-    presentation.section.update(title: "Disk Sources")
+    guard let usages else {
+      showEmptyState("Application disk data unavailable", in: list)
+      return
+    }
+    presentation.section.update(title: "Application Disk I/O")
     let applicationRows = usages.map { usage in
       let value =
         "↓\(StatsFormatter.rate(usage.readBytesPerSecond))  "
@@ -755,34 +770,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           + StatsFormatter.rate(usage.writeBytesPerSecond)
       )
     }
-    var rows: [ResourceListItem] = []
-    if let activity = latestSnapshot?.storageActivity {
-      let listedRead = usages.reduce(0) { $0 + $1.readBytesPerSecond }
-      let listedWrite = usages.reduce(0) { $0 + $1.writeBytesPerSecond }
-      let unlistedRead = max(0, activity.readBytesPerSecond - listedRead)
-      let unlistedWrite = max(0, activity.writeBytesPerSecond - listedWrite)
-      if unlistedRead >= 1_024 || unlistedWrite >= 1_024 {
-        let value =
-          "↓\(StatsFormatter.rate(unlistedRead))  "
-          + "↑\(StatsFormatter.rate(unlistedWrite))"
-        rows.append(
-          ResourceListItem(
-            identifier: "storage:system",
-            name: "Other Activity",
-            value: value,
-            image: NSImage(
-              systemSymbolName: "gearshape.2",
-              accessibilityDescription: nil
-            ),
-            accessibilityLabel:
-              "System and unattributed disk activity, read "
-              + "\(StatsFormatter.rate(unlistedRead)), wrote "
-              + StatsFormatter.rate(unlistedWrite)
-          )
-        )
-      }
-    }
-    rows.append(contentsOf: applicationRows)
+    let rows = applicationRows
     guard !rows.isEmpty else {
       showEmptyState("No measurable disk activity in this sample", in: list)
       return
@@ -907,7 +895,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
       guard let list = presentation.detailsList else { return }
       var items: [ResourceListItem] = []
       if let details = snapshot.networkDetails {
-        let isConnected = details.localAddress != nil
+        let isConnected = details.isConnected == true
         let interface = [details.interfaceType, details.interfaceName]
           .compactMap { $0 }
           .joined(separator: " · ")
@@ -915,7 +903,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           detailItem(
             id: "network:connection",
             name: "Connection",
-            value: isConnected ? (interface.isEmpty ? "Connected" : interface) : "Offline",
+            value: details.isConnected == nil
+              ? "Checking…"
+              : (isConnected ? (interface.isEmpty ? "Connected" : interface) : "Offline"),
             symbol: isConnected ? "checkmark.circle" : "xmark.circle",
             valueColor: isConnected ? .systemGreen : .systemRed
           )
@@ -925,7 +915,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
             id: "network:name",
             name: "Network",
             value: details.networkName
-              ?? (isConnected ? "Unavailable" : "Not connected"),
+              ?? (isConnected
+                ? (details.interfaceType == "Wi-Fi"
+                  ? "Wi-Fi name unavailable · see Settings" : "Not applicable")
+                : "Not connected"),
             symbol: "wifi.router"
           )
         )
@@ -972,6 +965,11 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           )
         )
       }
+      if let details = snapshot.networkDetails, let ipv6 = details.ipv6Address,
+        ipv6 != details.localAddress
+      {
+        items.append(detailItem(id: "network:ipv6", name: "IPv6", value: ipv6, symbol: "globe"))
+      }
       if preferences.showPublicIP {
         items.append(
           detailItem(
@@ -986,9 +984,9 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         items.append(
           detailItem(
             id: "network:traffic",
-            name: "Traffic Totals",
-            value: "↓ \(StatsFormatter.memory(details.totalReceivedBytes))"
-              + " · ↑ \(StatsFormatter.memory(details.totalSentBytes))",
+            name: "Connection Totals",
+            value: "↓ \(details.totalReceivedBytes.map(StatsFormatter.memory) ?? "–")"
+              + " · ↑ \(details.totalSentBytes.map(StatsFormatter.memory) ?? "–")",
             symbol: "arrow.up.arrow.down.circle"
           )
         )
@@ -1100,7 +1098,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     switch state {
     case .charging: "Charging"
     case .full: "Fully Charged"
-    case .pluggedIn: "On Hold"
+    case .pluggedIn: "Not Charging"
     case .onBattery: "On Battery"
     }
   }
@@ -1279,9 +1277,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private func startNetworkMonitoring() {
     guard networkPathMonitor == nil else { return }
     let monitor = NWPathMonitor()
-    monitor.pathUpdateHandler = { [weak self] _ in
+    monitor.pathUpdateHandler = { [weak self] path in
+      let isConnected = path.status == .satisfied
       Task { @MainActor [weak self] in
-        self?.networkPathDidChange()
+        self?.networkPathDidChange(isConnected: isConnected)
       }
     }
     networkPathMonitor = monitor
@@ -1291,16 +1290,10 @@ final class MenuBarController: NSObject, NSMenuDelegate {
   private func stopNetworkMonitoring() {
     networkPathMonitor?.cancel()
     networkPathMonitor = nil
-    receivedInitialNetworkPath = false
   }
 
-  private func networkPathDidChange() {
-    guard receivedInitialNetworkPath else {
-      receivedInitialNetworkPath = true
-      return
-    }
-
-    sampler.invalidateNetworkIdentityCache()
+  private func networkPathDidChange(isConnected: Bool) {
+    sampler.updateNetworkConnection(isConnected: isConnected)
     publicIPLookupTask?.cancel()
     publicIPLookupTask = nil
     publicIPAddress = nil
@@ -1420,7 +1413,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let now = ContinuousClock.now
     for kind in [WidgetKind.cpu, .memory, .network, .storage]
     where preferences.isEnabled(kind) {
-      let values: (primary: Double, secondary: Double?) =
+      let values: (primary: Double?, secondary: Double?) =
         switch kind {
         case .cpu:
           (snapshot.cpuPercent, nil)
@@ -1433,7 +1426,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
           )
         case .storage:
           (
-            snapshot.storageActivity?.readBytesPerSecond ?? 0,
+            snapshot.storageActivity?.readBytesPerSecond,
             snapshot.storageActivity?.writeBytesPerSecond
           )
         default:
@@ -1447,11 +1440,22 @@ final class MenuBarController: NSObject, NSMenuDelegate {
         continue
       }
 
+      let interval = openMenus.isEmpty ? preferences.refreshRate.interval : 1
+      let startsSegment =
+        points.last.map {
+          historyHasGap(
+            elapsed: Self.seconds($0.capturedAt.duration(to: now)),
+            previousInterval: $0.samplingInterval,
+            currentInterval: interval
+          )
+        } ?? true
       points.append(
         HistoryPoint(
           capturedAt: now,
-          primary: max(0, values.primary),
-          secondary: values.secondary.map { max(0, $0) }
+          primary: values.primary.map { max(0, $0) },
+          secondary: values.secondary.map { max(0, $0) },
+          samplingInterval: interval,
+          startsSegment: startsSegment
         )
       )
       points.removeAll {
@@ -1482,7 +1486,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     view.update(
       positions: positions,
       primaryValues: points.map(\.primary),
-      secondaryValues: points.compactMap(\.secondary),
+      secondaryValues: points.map(\.secondary),
+      breaks: points.map(\.startsSegment),
       historyInterval: preferences.graphPeriod.interval,
       accessibilityLabel: preferences.graphPeriod.historyTitle
     )
@@ -1513,8 +1518,8 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     button.setAccessibilityValue(title)
   }
 
-  private func updateCPUHighlight(for percentage: Double) {
-    if percentage >= 85 {
+  private func updateCPUHighlight(for percentage: Double?) {
+    if let percentage, percentage >= 85 {
       consecutiveHighCPUSamples += 1
       if consecutiveHighCPUSamples >= 3 {
         isCPUHighlighted = true
@@ -1525,7 +1530,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     }
   }
 
-  private func setNetworkRates(received: Double, sent: Double) {
+  private func setNetworkRates(received: Double?, sent: Double?) {
     guard let button = statusItems[.network]?.button else { return }
     let receivedText = StatsFormatter.rate(received)
     let sentText = StatsFormatter.rate(sent)
@@ -1557,7 +1562,7 @@ final class MenuBarController: NSObject, NSMenuDelegate {
     let image = NSImage(
       systemSymbolName: symbolName,
       accessibilityDescription: battery.isPluggedIn
-        ? "Battery charging"
+        ? "Battery connected to power"
         : "Battery charge"
     )
     image?.isTemplate = true

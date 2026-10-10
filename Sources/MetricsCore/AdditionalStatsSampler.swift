@@ -185,28 +185,28 @@ final class AdditionalStatsSampler {
   }
 
   private static func sampleNetworkIdentity() -> NetworkIdentity? {
-    guard
-      let global = SCDynamicStoreCopyValue(
-        nil,
-        "State:/Network/Global/IPv4" as CFString
-      ) as? [String: Any],
-      let primaryInterface = global["PrimaryInterface"] as? String
-    else { return nil }
-
-    let primaryService = global["PrimaryService"] as? String
-    let gatewayAddress = global["Router"] as? String
+    let ipv4 =
+      SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
+    let ipv6 =
+      SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
+    guard let route = primaryNetworkRoute(ipv4: ipv4, ipv6: ipv6) else { return nil }
+    let primaryInterface = route.interface
+    let primaryService = route.service
+    let gatewayAddress = route.gateway
 
     var head: UnsafeMutablePointer<ifaddrs>?
     guard getifaddrs(&head) == 0, let head else { return nil }
     defer { freeifaddrs(head) }
 
-    var address: String?
+    var ipv4Address: String?
+    var ipv6Address: String?
     var current: UnsafeMutablePointer<ifaddrs>? = head
     while let interface = current {
       let value = interface.pointee
       if String(cString: value.ifa_name) == primaryInterface,
         let socketAddress = value.ifa_addr,
-        socketAddress.pointee.sa_family == UInt8(AF_INET)
+        (socketAddress.pointee.sa_family == UInt8(AF_INET)
+          || socketAddress.pointee.sa_family == UInt8(AF_INET6))
       {
         var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
         if getnameinfo(
@@ -218,13 +218,17 @@ final class AdditionalStatsSampler {
           0,
           NI_NUMERICHOST
         ) == 0 {
-          address = String(
+          let address = String(
             decoding: host.prefix(while: { $0 != 0 }).map {
               UInt8(bitPattern: $0)
             },
             as: UTF8.self
           )
-          break
+          if socketAddress.pointee.sa_family == UInt8(AF_INET) {
+            ipv4Address = address
+          } else if ipv6Address == nil || !address.hasPrefix("fe80:") {
+            ipv6Address = address
+          }
         }
       }
       current = value.ifa_next
@@ -239,7 +243,8 @@ final class AdditionalStatsSampler {
         ? networkInterface.flatMap(localizedInterfaceName)
         : "Wi-Fi",
       networkName: wifiInterface?.ssid(),
-      localAddress: address,
+      localAddress: ipv4Address ?? ipv6Address,
+      ipv6Address: ipv6Address,
       gatewayAddress: gatewayAddress,
       dnsServers: dnsServers(primaryService: primaryService),
       signalDBm: wifiInterface.map { $0.rssiValue() },
@@ -286,6 +291,7 @@ struct NetworkIdentity {
   let type: String?
   let networkName: String?
   let localAddress: String?
+  let ipv6Address: String?
   let gatewayAddress: String?
   let dnsServers: [String]
   let signalDBm: Int?
@@ -298,7 +304,7 @@ private struct TimedValue<Value> {
   let capturedAt: ContinuousClock.Instant
 }
 
-private enum BatteryReader {
+enum BatteryReader {
   static func sample() -> BatteryStats? {
     guard
       let info = IOPSCopyPowerSourcesInfo()?.takeRetainedValue(),
@@ -311,71 +317,79 @@ private enum BatteryReader {
           .takeUnretainedValue() as? [String: Any],
         description[kIOPSTypeKey] as? String == kIOPSInternalBatteryType,
         description[kIOPSIsPresentKey] as? Bool != false,
-        let currentCapacity = description[kIOPSCurrentCapacityKey] as? Int,
-        let maximum = description[kIOPSMaxCapacityKey] as? Int,
-        maximum > 0
+        description[kIOPSMaxCapacityKey] as? Int != nil
       else { continue }
 
-      let isCharging = description[kIOPSIsChargingKey] as? Bool == true
-      let powerSource = description[kIOPSPowerSourceStateKey] as? String
-      let isPluggedIn = powerSource == kIOPSACPowerValue
-      let chargePercent = min(
-        100,
-        max(0, Double(currentCapacity) / Double(maximum) * 100)
-      )
-      let state: BatteryState
-      if isCharging {
-        state = .charging
-      } else if chargePercent >= 99.5 {
-        state = .full
-      } else if isPluggedIn {
-        state = .pluggedIn
-      } else {
-        state = .onBattery
-      }
-
-      let hardware = hardwareDetails()
-      let timeKey = isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
-      let rawMinutes = description[timeKey] as? Int
-      let hardwareMinutes =
-        isCharging
-        ? hardware.averageMinutesToFull
-        : hardware.averageMinutesToEmpty
-      let minutesRemaining = validMinutes(rawMinutes) ?? validMinutes(hardwareMinutes)
-      let voltage =
-        positiveNumber(description[kIOPSVoltageKey])
-        ?? hardware.voltageMillivolts
-      let currentMilliamps =
-        nonzeroNumber(description[kIOPSCurrentKey])
-        ?? hardware.currentMilliamps
-      let powerWatts = voltage.flatMap { voltage in
-        currentMilliamps.map { current in
-          abs(Double(voltage) * Double(current)) / 1_000_000
-        }
-      }
-      let maximumCapacityPercent: Double?
-      if let full = hardware.fullChargeCapacity,
-        let design = hardware.designCapacity,
-        design > 0
-      {
-        maximumCapacityPercent = min(
-          100,
-          max(0, Double(full) / Double(design) * 100)
-        )
-      } else {
-        maximumCapacityPercent = nil
-      }
-      return BatteryStats(
-        chargePercent: chargePercent,
-        state: state,
-        minutesRemaining: minutesRemaining,
-        isPluggedIn: isPluggedIn,
-        powerWatts: powerWatts,
-        maximumCapacityPercent: maximumCapacityPercent,
-        cycleCount: hardware.cycleCount
-      )
+      return decode(description, hardware: hardwareDetails())
     }
     return nil
+  }
+
+  static func decode(_ description: [String: Any], hardware: BatteryHardwareDetails = .init())
+    -> BatteryStats?
+  {
+    guard let currentCapacity = description[kIOPSCurrentCapacityKey] as? Int,
+      let maximum = description[kIOPSMaxCapacityKey] as? Int, maximum > 0
+    else { return nil }
+    let isCharging = description[kIOPSIsChargingKey] as? Bool == true
+    let powerSource = description[kIOPSPowerSourceStateKey] as? String
+    let isPluggedIn = powerSource == kIOPSACPowerValue
+    let chargePercent = min(
+      100,
+      max(0, Double(currentCapacity) / Double(maximum) * 100)
+    )
+    let state: BatteryState
+    if isPluggedIn && isCharging {
+      state = .charging
+    } else if isPluggedIn && description[kIOPSIsChargedKey] as? Bool == true {
+      state = .full
+    } else if isPluggedIn {
+      state = .pluggedIn
+    } else {
+      state = .onBattery
+    }
+
+    let timeKey = isCharging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey
+    let rawMinutes = description[timeKey] as? Int
+    let hardwareMinutes =
+      isCharging
+      ? hardware.averageMinutesToFull
+      : hardware.averageMinutesToEmpty
+    let minutesRemaining = validMinutes(rawMinutes) ?? validMinutes(hardwareMinutes)
+    let voltage =
+      positiveNumber(description[kIOPSVoltageKey])
+      ?? hardware.voltageMillivolts
+    var currentMilliamps = number(description[kIOPSCurrentKey])
+    // IOPS can publish a placeholder zero while the battery sensor reports current.
+    if currentMilliamps == nil || currentMilliamps == 0 {
+      currentMilliamps = hardware.currentMilliamps ?? currentMilliamps
+    }
+    let powerWatts = voltage.flatMap { voltage in
+      currentMilliamps.map { current in
+        abs(Double(voltage) * Double(current)) / 1_000_000
+      }
+    }
+    let maximumCapacityPercent: Double?
+    if let full = hardware.fullChargeCapacity,
+      let design = hardware.designCapacity,
+      design > 0
+    {
+      maximumCapacityPercent = min(
+        100,
+        max(0, Double(full) / Double(design) * 100)
+      )
+    } else {
+      maximumCapacityPercent = nil
+    }
+    return BatteryStats(
+      chargePercent: chargePercent,
+      state: state,
+      minutesRemaining: minutesRemaining,
+      isPluggedIn: isPluggedIn,
+      powerWatts: powerWatts,
+      maximumCapacityPercent: maximumCapacityPercent,
+      cycleCount: hardware.cycleCount
+    )
   }
 
   private static func hardwareDetails() -> BatteryHardwareDetails {
@@ -400,8 +414,8 @@ private enum BatteryReader {
     let batteryData = values["BatteryData"] as? [String: Any]
     return BatteryHardwareDetails(
       voltageMillivolts: positiveNumber(values["Voltage"]),
-      currentMilliamps: nonzeroNumber(values["InstantAmperage"])
-        ?? nonzeroNumber(values["Amperage"]),
+      currentMilliamps: number(values["InstantAmperage"])
+        ?? number(values["Amperage"]),
       fullChargeCapacity: number(batteryData?["FullChargeCapacity"])
         ?? number(batteryData?["AppleRawMaxCapacity"]),
       designCapacity: number(batteryData?["DesignCapacity"]),
@@ -429,13 +443,10 @@ private enum BatteryReader {
     return value
   }
 
-  private static func nonzeroNumber(_ value: Any?) -> Int? {
-    guard let value = number(value), value != 0 else { return nil }
-    return value
-  }
+
 }
 
-private struct BatteryHardwareDetails {
+struct BatteryHardwareDetails {
   var voltageMillivolts: Int?
   var currentMilliamps: Int?
   var fullChargeCapacity: Int?
@@ -443,4 +454,22 @@ private struct BatteryHardwareDetails {
   var cycleCount: Int?
   var averageMinutesToEmpty: Int?
   var averageMinutesToFull: Int?
+}
+
+struct NetworkRoute: Equatable {
+  let interface: String
+  let service: String?
+  let gateway: String?
+}
+
+func primaryNetworkRoute(ipv4: [String: Any]?, ipv6: [String: Any]?) -> NetworkRoute? {
+  for values in [ipv4, ipv6] {
+    guard let values, let interface = values["PrimaryInterface"] as? String else { continue }
+    return NetworkRoute(
+      interface: interface,
+      service: values["PrimaryService"] as? String,
+      gateway: values["Router"] as? String
+    )
+  }
+  return nil
 }

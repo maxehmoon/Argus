@@ -23,44 +23,32 @@ public struct AppNetworkUsage: Sendable, Equatable {
 public final class NetworkProcessSampler: Sendable {
   public init() {}
 
-  public func topApplications(limit: Int = 5) async -> [AppNetworkUsage] {
-    guard limit > 0, !Task.isCancelled else { return [] }
-
-    let usages = await Task.detached(priority: .userInitiated) {
-      Self.sampleTopApplications(limit: limit)
-    }.value
-
-    return Task.isCancelled ? [] : usages
+  public func topApplications(limit: Int = 5) async -> [AppNetworkUsage]? {
+    guard limit > 0 else { return [] }
+    let command = BoundedProcess()
+    return await withTaskCancellationHandler {
+      await Task.detached(priority: .utility) {
+        guard
+          let data = command.run(
+            executable: "/usr/bin/nettop",
+            arguments: [
+              "-P", "-d", "-x", "-L", "2", "-s", "1", "-t", "external",
+              "-J", "bytes_in,bytes_out", "-n",
+            ]
+          ),
+          let samples = NetTopOutputParser.parseFinalDeltaBlock(
+            String(decoding: data, as: UTF8.self))
+        else { return nil }
+        return Self.applications(from: samples, limit: limit)
+      }.value
+    } onCancel: {
+      command.cancel()
+    }
   }
 
-  private static func sampleTopApplications(limit: Int) -> [AppNetworkUsage] {
-    let process = Process()
-    let output = Pipe()
-
-    process.executableURL = URL(fileURLWithPath: "/usr/bin/nettop")
-    process.arguments = [
-      "-P", "-d", "-x", "-L", "2", "-s", "1", "-t", "external",
-      "-J", "bytes_in,bytes_out", "-n",
-    ]
-    process.standardOutput = output
-    process.standardError = FileHandle.nullDevice
-
-    do {
-      try process.run()
-    } catch {
-      return []
-    }
-
-    let data = output.fileHandleForReading.readDataToEndOfFile()
-    process.waitUntilExit()
-
-    guard process.terminationReason == .exit, process.terminationStatus == 0 else {
-      return []
-    }
-
-    let samples = NetTopOutputParser.parseFinalDeltaBlock(
-      String(decoding: data, as: UTF8.self)
-    )
+  private static func applications(from samples: [NetTopProcessSample], limit: Int)
+    -> [AppNetworkUsage]
+  {
     var identities: [pid_t: NetworkAppIdentity] = [:]
     identities.reserveCapacity(samples.count)
     for sample in samples {
@@ -97,8 +85,9 @@ struct NetworkAppIdentity: Sendable, Equatable {
 }
 
 enum NetTopOutputParser {
-  static func parseFinalDeltaBlock(_ output: String) -> [NetTopProcessSample] {
-    var foundHeader = false
+  static func parseFinalDeltaBlock(_ output: String) -> [NetTopProcessSample]? {
+    var headerCount = 0
+    var invalidBlock = false
     var finalBlock: [NetTopProcessSample] = []
 
     for rawLine in output.split(whereSeparator: \.isNewline) {
@@ -106,14 +95,19 @@ enum NetTopOutputParser {
       guard !line.isEmpty else { continue }
 
       if isHeader(line) {
-        foundHeader = true
+        headerCount += 1
+        invalidBlock = false
         finalBlock.removeAll(keepingCapacity: true)
-      } else if foundHeader, let sample = parseDataRow(line) {
-        finalBlock.append(sample)
+      } else if headerCount > 0 {
+        if let sample = parseDataRow(line) {
+          finalBlock.append(sample)
+        } else {
+          invalidBlock = true
+        }
       }
     }
 
-    return finalBlock
+    return headerCount >= 2 && !invalidBlock ? finalBlock : nil
   }
 
   static func aggregate(
@@ -307,5 +301,83 @@ private enum NetworkProcessIdentityResolver {
       return nil
     }
     return String(executablePath[..<range.upperBound].dropLast())
+  }
+}
+
+// Only the worker reads stdout; cancellation and launch share a lock so that a
+// cancellation before launch cannot leave a child behind. Output is non-blocking
+// and bounded as well as the process lifetime.
+final class BoundedProcess: @unchecked Sendable {
+  private let lock = NSLock()
+  private let process = Process()
+  private var cancelled = false
+
+  func cancel() {
+    lock.lock()
+    defer { lock.unlock() }
+    cancelled = true
+    if process.isRunning { kill(process.processIdentifier, SIGKILL) }
+  }
+
+  func run(executable: String, arguments: [String], timeout: Duration = .seconds(4)) -> Data? {
+    let output = Pipe()
+    let reader = output.fileHandleForReading
+    let writer = output.fileHandleForWriting
+    defer { try? reader.close(); try? writer.close() }
+    lock.lock()
+    guard !cancelled else { lock.unlock(); return nil }
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = arguments
+    process.standardOutput = output
+    process.standardError = FileHandle.nullDevice
+
+    do {
+      try process.run()
+    } catch {
+      lock.unlock()
+      return nil
+    }
+    lock.unlock()
+    try? writer.close()
+
+    let descriptor = reader.fileDescriptor
+    let flags = fcntl(descriptor, F_GETFL)
+    guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else {
+      cancel()
+      process.waitUntilExit()
+      return nil
+    }
+    let deadline = ContinuousClock.now.advanced(by: timeout)
+    var data = Data()
+    var buffer = [UInt8](repeating: 0, count: 16_384)
+    var ended = false
+    while ContinuousClock.now < deadline {
+      lock.lock()
+      let wasCancelled = cancelled
+      lock.unlock()
+      if wasCancelled { break }
+      let count = read(descriptor, &buffer, buffer.count)
+      if count > 0 {
+        guard data.count + count <= 8 * 1_024 * 1_024 else { break }
+        data.append(contentsOf: buffer.prefix(count))
+      } else if count == 0 {
+        ended = true
+        if !process.isRunning {
+          process.waitUntilExit()
+          return process.terminationReason == .exit && process.terminationStatus == 0 ? data : nil
+        }
+      } else if errno != EAGAIN && errno != EINTR {
+        break
+      }
+      if count <= 0 {
+        // An inherited stdout or a child that closes stdout early must not hang
+        // the sampler. poll also bounds cancellation latency to 50 ms.
+        var descriptorState = pollfd(fd: ended ? -1 : descriptor, events: Int16(POLLIN), revents: 0)
+        _ = poll(&descriptorState, 1, 50)
+      }
+    }
+    cancel()
+    process.waitUntilExit()
+    return nil
   }
 }

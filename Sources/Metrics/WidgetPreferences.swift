@@ -38,9 +38,9 @@ enum WidgetKind: String, CaseIterable, Identifiable, Sendable {
     case .memory:
       "Memory usage and the applications using the most RAM."
     case .network:
-      "Received and sent traffic with the most active applications."
+      "Primary-connection traffic and applications with external network activity."
     case .storage:
-      "System-volume capacity, all-disk activity, and the busiest applications."
+      "System-volume capacity, physical-disk activity, and the busiest applications."
     case .battery:
       "Charge level, power state, and estimated time remaining."
     }
@@ -58,8 +58,10 @@ enum WidgetKind: String, CaseIterable, Identifiable, Sendable {
 
   var sectionTitle: String {
     switch self {
-    case .cpu, .memory, .network, .storage: "Top Applications"
-    case .battery: "Top Energy Users"
+    case .cpu, .memory: "Top Applications"
+    case .network: "External Network Activity"
+    case .storage: "Application Disk I/O"
+    case .battery: "CPU Power by Application"
     }
   }
 
@@ -74,7 +76,11 @@ enum WidgetKind: String, CaseIterable, Identifiable, Sendable {
   }
 
   var summaryTitle: String {
-    self == .storage ? "All Disk Activity" : title
+    switch self {
+    case .storage: "Physical Disk Activity"
+    case .network: "Primary Connection"
+    default: title
+    }
   }
 
   var sampleOption: SystemSampleOptions {
@@ -165,6 +171,7 @@ final class WidgetPreferences: ObservableObject {
   var onEnabledWidgetsChange: ((Set<WidgetKind>) -> Void)?
   var onRefreshRateChange: ((RefreshRate) -> Void)?
   var onGraphPeriodChange: ((GraphPeriod) -> Void)?
+  var onAnimateChangesChange: ((Bool) -> Void)?
   var onShowPublicIPChange: ((Bool) -> Void)?
 
   private let defaults: UserDefaults
@@ -237,6 +244,7 @@ final class WidgetPreferences: ObservableObject {
     guard self.animateChanges != animateChanges else { return }
     self.animateChanges = animateChanges
     defaults.set(animateChanges, forKey: Key.animateChanges)
+    onAnimateChangesChange?(animateChanges)
   }
 
   func setShowPublicIP(_ showPublicIP: Bool) {

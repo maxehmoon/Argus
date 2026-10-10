@@ -53,6 +53,19 @@ struct WidgetPreferencesTests {
     }
   }
 
+  @Test
+  func publishesMotionPreferenceChangesImmediately() {
+    withDefaults { defaults in
+      let preferences = WidgetPreferences(defaults: defaults)
+      var changes: [Bool] = []
+      preferences.onAnimateChangesChange = { changes.append($0) }
+      preferences.setAnimateChanges(false)
+      preferences.setAnimateChanges(false)
+      preferences.setAnimateChanges(true)
+      #expect(changes == [false, true])
+    }
+  }
+
   private func withDefaults(
     _ body: (UserDefaults) -> Void
   ) {

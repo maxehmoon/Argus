@@ -5,13 +5,14 @@ import Testing
 @Suite("Native system sampler")
 struct SystemStatsSamplerTests {
   @Test
-  func returnsPlausibleHostValues() {
+  func returnsPlausibleHostValues() throws {
     let sampler = SystemStatsSampler()
     let sample = sampler.sample()
 
-    #expect((0...100).contains(sample.cpuPercent))
+    #expect(sample.cpuPercent == nil)  // A rate needs two samples.
     #expect(sample.memoryTotal > 0)
-    #expect(sample.memoryUsed <= sample.memoryTotal)
+    let memoryUsed = try #require(sample.memoryUsed)
+    #expect(memoryUsed <= sample.memoryTotal)
     if let memory = sample.memoryBreakdown {
       #expect(memory.appBytes <= sample.memoryTotal)
       #expect(memory.wiredBytes <= sample.memoryTotal)
@@ -25,9 +26,9 @@ struct SystemStatsSamplerTests {
           )
       )
     }
-    #expect(sample.downloadBytesPerSecond >= 0)
-    #expect(sample.uploadBytesPerSecond >= 0)
-    #expect(sampler.sampledNetworkInterfaceCount > 0)
+    #expect(sample.downloadBytesPerSecond == nil)
+    #expect(sample.uploadBytesPerSecond == nil)
+    #expect(sampler.sampledNetworkInterfaceCount <= 1)
   }
 
   @Test
@@ -35,15 +36,13 @@ struct SystemStatsSamplerTests {
     let sampler = SystemStatsSampler()
     let sample = sampler.sample(options: [.storage, .swap, .load, .battery])
 
-    #expect(sample.cpuPercent == 0)
-    #expect(sample.memoryUsed == 0)
-    #expect(sample.downloadBytesPerSecond == 0)
-    #expect(sample.uploadBytesPerSecond == 0)
+    #expect(sample.cpuPercent == nil)
+    #expect(sample.memoryUsed == nil)
+    #expect(sample.downloadBytesPerSecond == nil)
+    #expect(sample.uploadBytesPerSecond == nil)
     #expect(sample.storage?.totalBytes ?? 0 > 0)
     #expect(sample.storage?.freeBytes ?? 0 <= sample.storage?.totalBytes ?? 0)
-    #expect(sample.storageActivity != nil)
-    #expect(sample.storageActivity?.readBytesPerSecond ?? -1 >= 0)
-    #expect(sample.storageActivity?.writeBytesPerSecond ?? -1 >= 0)
+    #expect(sample.storageActivity == nil)  // Seed physical-device counters first.
     #expect(sample.swap != nil)
     #expect(sample.loadAverages?.oneMinute ?? -1 >= 0)
     if let battery = sample.battery {
@@ -84,26 +83,27 @@ struct SystemStatsSamplerTests {
     let previous = ProcessSampleBatch(
       timestamp: 1_000,
       samples: [
-        10: RawProcessSample(pid: 10, startTime: 1, cpuTime: 100, footprint: 0),
-        11: RawProcessSample(pid: 11, startTime: 2, cpuTime: 200, footprint: 0),
-        12: RawProcessSample(pid: 12, startTime: 3, cpuTime: 300, footprint: 0),
-        13: RawProcessSample(pid: 13, startTime: 4, cpuTime: 400, footprint: 0),
+        10: RawProcessSample(pid: 10, startTime: 1, cpuTimeTicks: 100, footprint: 0),
+        11: RawProcessSample(pid: 11, startTime: 2, cpuTimeTicks: 200, footprint: 0),
+        12: RawProcessSample(pid: 12, startTime: 3, cpuTimeTicks: 300, footprint: 0),
+        13: RawProcessSample(pid: 13, startTime: 4, cpuTimeTicks: 400, footprint: 0),
       ]
     )
     let current = ProcessSampleBatch(
       timestamp: 1_100,
       samples: [
-        10: RawProcessSample(pid: 10, startTime: 1, cpuTime: 120, footprint: 0),
-        11: RawProcessSample(pid: 11, startTime: 2, cpuTime: 230, footprint: 0),
-        12: RawProcessSample(pid: 12, startTime: 99, cpuTime: 900, footprint: 0),
-        13: RawProcessSample(pid: 13, startTime: 4, cpuTime: 440, footprint: 0),
+        10: RawProcessSample(pid: 10, startTime: 1, cpuTimeTicks: 120, footprint: 0),
+        11: RawProcessSample(pid: 11, startTime: 2, cpuTimeTicks: 230, footprint: 0),
+        12: RawProcessSample(pid: 12, startTime: 99, cpuTimeTicks: 900, footprint: 0),
+        13: RawProcessSample(pid: 13, startTime: 4, cpuTimeTicks: 440, footprint: 0),
       ]
     )
 
     let usages = rankCPUApplications(
       previous: previous,
       current: current,
-      limit: 5
+      limit: 5,
+      timebase: MachTimebase(numerator: 1, denominator: 1)
     ) { pid in
       switch pid {
       case 10, 11:
@@ -134,9 +134,9 @@ struct SystemStatsSamplerTests {
   @Test
   func ranksAndAggregatesApplicationMemory() {
     let samples: [Int32: RawProcessSample] = [
-      10: RawProcessSample(pid: 10, startTime: 1, cpuTime: 0, footprint: 300),
-      11: RawProcessSample(pid: 11, startTime: 2, cpuTime: 0, footprint: 500),
-      12: RawProcessSample(pid: 12, startTime: 3, cpuTime: 0, footprint: 700),
+      10: RawProcessSample(pid: 10, startTime: 1, cpuTimeTicks: 0, footprint: 300),
+      11: RawProcessSample(pid: 11, startTime: 2, cpuTimeTicks: 0, footprint: 500),
+      12: RawProcessSample(pid: 12, startTime: 3, cpuTimeTicks: 0, footprint: 700),
     ]
 
     let usages = rankMemoryApplications(samples: samples, limit: 2) { pid in
@@ -170,21 +170,21 @@ struct SystemStatsSamplerTests {
         10: RawProcessSample(
           pid: 10,
           startTime: 1,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 100
         ),
         11: RawProcessSample(
           pid: 11,
           startTime: 2,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 200
         ),
         12: RawProcessSample(
           pid: 12,
           startTime: 3,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 300
         ),
@@ -196,21 +196,21 @@ struct SystemStatsSamplerTests {
         10: RawProcessSample(
           pid: 10,
           startTime: 1,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 2_000_000_100
         ),
         11: RawProcessSample(
           pid: 11,
           startTime: 2,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 1_000_000_200
         ),
         12: RawProcessSample(
           pid: 12,
           startTime: 3,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           energyNanojoules: 500_000_300
         ),
@@ -252,7 +252,7 @@ struct SystemStatsSamplerTests {
         10: RawProcessSample(
           pid: 10,
           startTime: 1,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 100,
           diskWriteBytes: 100
@@ -260,7 +260,7 @@ struct SystemStatsSamplerTests {
         11: RawProcessSample(
           pid: 11,
           startTime: 2,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 100,
           diskWriteBytes: 100
@@ -268,7 +268,7 @@ struct SystemStatsSamplerTests {
         12: RawProcessSample(
           pid: 12,
           startTime: 3,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 100,
           diskWriteBytes: 100
@@ -281,7 +281,7 @@ struct SystemStatsSamplerTests {
         10: RawProcessSample(
           pid: 10,
           startTime: 1,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 1_100,
           diskWriteBytes: 2_100
@@ -289,7 +289,7 @@ struct SystemStatsSamplerTests {
         11: RawProcessSample(
           pid: 11,
           startTime: 2,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 3_100,
           diskWriteBytes: 1_100
@@ -297,7 +297,7 @@ struct SystemStatsSamplerTests {
         12: RawProcessSample(
           pid: 12,
           startTime: 3,
-          cpuTime: 0,
+          cpuTimeTicks: 0,
           footprint: 0,
           diskReadBytes: 600,
           diskWriteBytes: 500
@@ -348,7 +348,7 @@ struct SystemStatsSamplerTests {
   }
 
   @Test
-  func parsesAndAggregatesFinalNetworkDelta() {
+  func parsesAndAggregatesFinalNetworkDelta() throws {
     let output = """
       ,bytes_in,bytes_out,
       Browser.10,9000,8000,
@@ -357,7 +357,7 @@ struct SystemStatsSamplerTests {
       Browser Helper.11,250,30,
       "Odd, Name.12",100,50,
       """
-    let samples = NetTopOutputParser.parseFinalDeltaBlock(output)
+    let samples = try #require(NetTopOutputParser.parseFinalDeltaBlock(output))
 
     #expect(samples.count == 3)
     #expect(samples[2].name == "Odd, Name")

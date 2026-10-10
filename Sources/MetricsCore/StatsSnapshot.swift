@@ -20,12 +20,14 @@ public enum MemoryPressureLevel: Sendable, Equatable {
 }
 
 public struct NetworkDetails: Sendable, Equatable {
-  public let totalReceivedBytes: UInt64
-  public let totalSentBytes: UInt64
+  public let totalReceivedBytes: UInt64?
+  public let totalSentBytes: UInt64?
+  public let isConnected: Bool?
   public let interfaceName: String?
   public let interfaceType: String?
   public let networkName: String?
   public let localAddress: String?
+  public let ipv6Address: String?
   public let gatewayAddress: String?
   public let dnsServers: [String]
   public let signalDBm: Int?
@@ -44,11 +46,11 @@ public struct StorageActivity: Sendable, Equatable {
 }
 
 public struct StatsSnapshot: Sendable {
-  public let cpuPercent: Double
-  public let memoryUsed: UInt64
+  public let cpuPercent: Double?
+  public let memoryUsed: UInt64?
   public let memoryTotal: UInt64
-  public let downloadBytesPerSecond: Double
-  public let uploadBytesPerSecond: Double
+  public let downloadBytesPerSecond: Double?
+  public let uploadBytesPerSecond: Double?
   public let storage: StorageStats?
   public let battery: BatteryStats?
   public let swap: SwapStats?
@@ -58,17 +60,17 @@ public struct StatsSnapshot: Sendable {
   public let networkDetails: NetworkDetails?
   public let storageActivity: StorageActivity?
 
-  public var memoryPercent: Double {
-    guard memoryTotal > 0 else { return 0 }
+  public var memoryPercent: Double? {
+    guard let memoryUsed, memoryTotal > 0 else { return nil }
     return min(100, Double(memoryUsed) / Double(memoryTotal) * 100)
   }
 
   public init(
-    cpuPercent: Double,
-    memoryUsed: UInt64,
+    cpuPercent: Double?,
+    memoryUsed: UInt64?,
     memoryTotal: UInt64,
-    downloadBytesPerSecond: Double,
-    uploadBytesPerSecond: Double,
+    downloadBytesPerSecond: Double?,
+    uploadBytesPerSecond: Double?,
     storage: StorageStats? = nil,
     battery: BatteryStats? = nil,
     swap: SwapStats? = nil,

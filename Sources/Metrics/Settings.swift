@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 @MainActor
@@ -230,6 +231,8 @@ private struct GeneralSettingsPage: View {
 
   var body: some View {
     Form {
+      StartAtLoginSettingsSection()
+
       Section {
         Picker("Background refresh", selection: refreshRateBinding) {
           ForEach(RefreshRate.allCases) { rate in
@@ -252,6 +255,8 @@ private struct GeneralSettingsPage: View {
       } header: {
         Text("Motion")
       }
+
+      WiFiNameSettingsSection()
 
       Section {
         Toggle("Show public IP and country", isOn: showPublicIPBinding)
@@ -293,6 +298,70 @@ private struct GeneralSettingsPage: View {
       get: { preferences.showPublicIP },
       set: { preferences.setShowPublicIP($0) }
     )
+  }
+}
+
+@MainActor
+private struct StartAtLoginSettingsSection: View {
+  @State private var status: SMAppService.Status = .notRegistered
+  @State private var errorMessage: String?
+
+  var body: some View {
+    Section {
+      Toggle(
+        "Start at login",
+        isOn: Binding(
+          get: { status == .enabled },
+          set: { setEnabled($0) }
+        )
+      )
+      .toggleStyle(.switch)
+
+      if status == .requiresApproval {
+        Button("Open Login Items Settings…") {
+          SMAppService.openSystemSettingsLoginItems()
+        }
+      }
+    } header: {
+      Text("Startup")
+    } footer: {
+      if status == .requiresApproval {
+        Text("Allow Argus in System Settings to start automatically when you log in.")
+      } else if let errorMessage {
+        Text("Couldn’t update start at login: \(errorMessage)")
+          .foregroundStyle(.red)
+      }
+    }
+    .onAppear { refreshStatus() }
+    .onReceive(
+      NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)
+    ) { _ in
+      refreshStatus()
+    }
+  }
+
+  private func refreshStatus() {
+    status = SMAppService.mainApp.status
+  }
+
+  private func setEnabled(_ enabled: Bool) {
+    let service = SMAppService.mainApp
+    errorMessage = nil
+    defer { refreshStatus() }
+
+    do {
+      if enabled {
+        if service.status == .requiresApproval {
+          SMAppService.openSystemSettingsLoginItems()
+        } else if service.status != .enabled {
+          try service.register()
+        }
+      } else if service.status == .enabled || service.status == .requiresApproval {
+        try service.unregister()
+      }
+    } catch {
+      errorMessage = error.localizedDescription
+    }
   }
 }
 
