@@ -578,10 +578,10 @@ enum NetworkStatusImage {
   static func make(received: String, sent: String) -> NSImage {
     let image = NSImage(
       size: NSSize(width: 69, height: lineHeight * 2),
-      flipped: true
+      flipped: false
     ) { bounds in
       for (index, line) in [("↑", sent), ("↓", received)].enumerated() {
-        let y = CGFloat(index) * lineHeight
+        let y = bounds.height - CGFloat(index + 1) * lineHeight
         draw(
           line.0,
           in: NSRect(x: 0, y: y, width: 8, height: lineHeight),
@@ -611,16 +611,24 @@ enum NetworkStatusImage {
     let paragraphStyle = NSMutableParagraphStyle()
     paragraphStyle.alignment = alignment
     paragraphStyle.lineBreakMode = .byClipping
-    NSAttributedString(
+    let value = NSAttributedString(
       string: text,
       attributes: [
         .font: font,
         .foregroundColor: NSColor.black,
         .paragraphStyle: paragraphStyle,
       ]
-    ).draw(
-      with: rect,
-      options: [.usesLineFragmentOrigin, .truncatesLastVisibleLine]
+    )
+    let glyphBounds = value.boundingRect(
+      with: rect.size,
+      options: .usesDeviceMetrics
+    )
+    // Centre the visible glyphs rather than the font's padded line box.
+    var drawingRect = rect
+    drawingRect.origin.y = rect.midY - glyphBounds.midY
+    value.draw(
+      with: drawingRect,
+      options: .usesDeviceMetrics
     )
   }
 }
